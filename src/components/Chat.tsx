@@ -34,8 +34,8 @@ const Chat = () => {
       messageEnd.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
-    if (chatTurns.length === 1) {
-      document.title = `${chatTurns[0].content.substring(0, 30)} - Perplexica`;
+    if (chatTurns.length > 0) {
+      document.title = `${chatTurns[0].content.substring(0, 30)} - NewFan-Finance`;
     }
 
     if (chatTurns[chatTurns.length - 1]?.role === 'user') {

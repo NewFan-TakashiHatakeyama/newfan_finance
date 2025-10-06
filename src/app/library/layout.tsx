@@ -1,12 +1,15 @@
 import { Metadata } from 'next';
 import React from 'react';
+import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
-  title: 'Library - Perplexica',
+  title: 'Library - NewFan-Finance',
 };
 
-const Layout = ({ children }: { children: React.ReactNode }) => {
+export default function LibraryLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return <div>{children}</div>;
-};
-
-export default Layout;
+}
