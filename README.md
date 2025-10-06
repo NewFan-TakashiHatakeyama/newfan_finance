@@ -1,4 +1,4 @@
-# perplexica-frontend
+# NewFan-Finance
 
 これは、Next.js、LangChain、Drizzle ORM、Tailwind CSSを使用して構築されたAIチャットアプリケーションのフロントエンドです。
 
