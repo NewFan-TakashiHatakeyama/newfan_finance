@@ -22,6 +22,18 @@ import { z } from 'zod';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+};
+
+export const OPTIONS = () =>
+  new Response(null, {
+    status: 204,
+    headers: corsHeaders,
+  });
+
 const messageSchema = z.object({
   messageId: z.string().min(1, 'Message ID is required'),
   chatId: z.string().min(1, 'Chat ID is required'),
