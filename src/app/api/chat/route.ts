@@ -224,18 +224,6 @@ const handleHistorySave = async (
   }
 };
 
-export const OPTIONS = async (req: Request) => {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  };
-  return new Response(null, {
-    status: 204,
-    headers,
-  });
-};
-
 export const POST = async (req: Request) => {
   try {
     const reqBody = (await req.json()) as Body;
