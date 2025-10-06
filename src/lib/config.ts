@@ -64,13 +64,36 @@ type RecursivePartial<T> = {
 const loadConfig = () => {
   // Server-side only
   if (typeof window === 'undefined') {
-    return toml.parse(
-      fs.readFileSync(path.join(process.cwd(), `${configFileName}`), 'utf-8'),
-    ) as any as Config;
+    const configPath = path.join(process.cwd(), configFileName);
+    if (fs.existsSync(configPath)) {
+      return toml.parse(
+        fs.readFileSync(configPath, 'utf-8'),
+      ) as any as Config;
+    }
   }
 
-  // Client-side fallback - settings will be loaded via API
-  return {} as Config;
+  // Client-side fallback or if config.toml doesn't exist on server
+  return {
+    GENERAL: {
+      SIMILARITY_MEASURE: 'cosine',
+      KEEP_ALIVE: '5m',
+    },
+    MODELS: {
+      OPENAI: { API_KEY: '' },
+      GROQ: { API_KEY: '' },
+      ANTHROPIC: { API_KEY: '' },
+      GEMINI: { API_KEY: '' },
+      OLLAMA: { API_URL: '', API_KEY: '' },
+      DEEPSEEK: { API_KEY: '' },
+      AIMLAPI: { API_KEY: '' },
+      LM_STUDIO: { API_URL: '' },
+      LEMONADE: { API_URL: '', API_KEY: '' },
+      CUSTOM_OPENAI: { API_URL: '', API_KEY: '', MODEL_NAME: '' },
+    },
+    API_ENDPOINTS: {
+      SEARXNG: '',
+    },
+  } as Config;
 };
 
 export const getSimilarityMeasure = () =>
@@ -158,12 +181,12 @@ const mergeConfigs = (current: any, update: any): any => {
 };
 
 export const updateConfig = (config: RecursivePartial<Config>) => {
-  // Server-side only
-  if (typeof window === 'undefined') {
+  // Server-side only, and not on Vercel
+  if (typeof window === 'undefined' && !process.env.VERCEL) {
     const currentConfig = loadConfig();
     const mergedConfig = mergeConfigs(currentConfig, config);
     fs.writeFileSync(
-      path.join(path.join(process.cwd(), `${configFileName}`)),
+      path.join(process.cwd(), `${configFileName}`),
       toml.stringify(mergedConfig),
     );
   }
