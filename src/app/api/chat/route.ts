@@ -224,6 +224,12 @@ const handleHistorySave = async (
   }
 };
 
+export const OPTIONS = async (req: Request) => {
+  return new Response(null, {
+    status: 204,
+  });
+};
+
 export const POST = async (req: Request) => {
   try {
     const reqBody = (await req.json()) as Body;
