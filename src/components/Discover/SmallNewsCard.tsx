@@ -1,0 +1,59 @@
+import { Discover } from '@/app/discover/page';
+import Link from 'next/link';
+import he from 'he';
+import { ExternalLink } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+
+const SmallNewsCard = ({ item }: { item: Discover }) => {
+  const { t } = useTranslation();
+  const formattedDate = item.pubDate
+    ? new Date(item.pubDate).toLocaleDateString('ja-JP', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      })
+    : '';
+
+  return (
+    <div className="overflow-hidden bg-light-secondary dark:bg-dark-secondary shadow-sm shadow-light-200/10 dark:shadow-black/25 group flex flex-col">
+      <div className="relative aspect-video overflow-hidden">
+        <img
+          className="object-cover w-full h-full"
+          src={item.thumbnail}
+          alt={item.title}
+        />
+      </div>
+      <div className="p-4 flex flex-col flex-grow">
+        <h3 className="font-semibold text-sm mb-2 leading-tight line-clamp-2">
+          {item.title && he.decode(item.title)}
+        </h3>
+        <div className="text-xs text-black/50 dark:text-white/50 mb-2">
+          <span>{formattedDate}</span>
+          {item.author && <span> / {item.author}</span>}
+        </div>
+        <p className="text-black/60 dark:text-white/60 text-xs leading-relaxed line-clamp-2 flex-grow">
+          {item.content && he.decode(item.content)}
+        </p>
+        <div className="flex items-center gap-4 mt-2">
+          <a
+            href={item.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+          >
+            元記事を読む <ExternalLink size={12} />
+          </a>
+          <Link
+            href={`/?q=「${item.title}」を日本語で要約してください`}
+            className="text-xs text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
+            target="_blank"
+          >
+            {t('readAiSummary')}
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default SmallNewsCard;
