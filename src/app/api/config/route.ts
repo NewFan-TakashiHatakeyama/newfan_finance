@@ -54,19 +54,19 @@ export const GET = async (req: Request) => {
       });
     }
 
-    config['openaiApiKey'] = getOpenaiApiKey();
+    config['openaiApiKey'] = !!getOpenaiApiKey();
     config['ollamaApiUrl'] = getOllamaApiEndpoint();
-    config['ollamaApiKey'] = getOllamaApiKey();
+    config['ollamaApiKey'] = !!getOllamaApiKey();
     config['lmStudioApiUrl'] = getLMStudioApiEndpoint();
     config['lemonadeApiUrl'] = getLemonadeApiEndpoint();
-    config['lemonadeApiKey'] = getLemonadeApiKey();
-    config['anthropicApiKey'] = getAnthropicApiKey();
-    config['groqApiKey'] = getGroqApiKey();
-    config['geminiApiKey'] = getGeminiApiKey();
-    config['deepseekApiKey'] = getDeepseekApiKey();
-    config['aimlApiKey'] = getAimlApiKey();
+    config['lemonadeApiKey'] = !!getLemonadeApiKey();
+    config['anthropicApiKey'] = !!getAnthropicApiKey();
+    config['groqApiKey'] = !!getGroqApiKey();
+    config['geminiApiKey'] = !!getGeminiApiKey();
+    config['deepseekApiKey'] = !!getDeepseekApiKey();
+    config['aimlApiKey'] = !!getAimlApiKey();
     config['customOpenaiApiUrl'] = getCustomOpenaiApiUrl();
-    config['customOpenaiApiKey'] = getCustomOpenaiApiKey();
+    config['customOpenaiApiKey'] = !!getCustomOpenaiApiKey();
     config['customOpenaiModelName'] = getCustomOpenaiModelName();
 
     return Response.json({ ...config }, { status: 200 });

@@ -256,8 +256,115 @@ const Page = () => {
         key.toLowerCase().includes('api') ||
         key.toLowerCase().includes('url')
       ) {
-        // After saving an API key, we reload the page to refetch the models
-        location.reload();
+        const res = await fetch(`/api/config`, {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to fetch updated config');
+        }
+
+        const data = await res.json();
+
+        setChatModels(data.chatModelProviders || {});
+        setEmbeddingModels(data.embeddingModelProviders || {});
+
+        const currentChatProvider = selectedChatModelProvider;
+        const newChatProviders = Object.keys(data.chatModelProviders || {});
+
+        if (!currentChatProvider && newChatProviders.length > 0) {
+          const firstProvider = newChatProviders[0];
+          const firstModel = data.chatModelProviders[firstProvider]?.[0]?.name;
+
+          if (firstModel) {
+            setSelectedChatModelProvider(firstProvider);
+            setSelectedChatModel(firstModel);
+            localStorage.setItem('chatModelProvider', firstProvider);
+            localStorage.setItem('chatModel', firstModel);
+          }
+        } else if (
+          currentChatProvider &&
+          (!data.chatModelProviders ||
+            !data.chatModelProviders[currentChatProvider] ||
+            !Array.isArray(data.chatModelProviders[currentChatProvider]) ||
+            data.chatModelProviders[currentChatProvider].length === 0)
+        ) {
+          const firstValidProvider = Object.entries(
+            data.chatModelProviders || {},
+          ).find(
+            ([_, models]) => Array.isArray(models) && models.length > 0,
+          )?.[0];
+
+          if (firstValidProvider) {
+            setSelectedChatModelProvider(firstValidProvider);
+            setSelectedChatModel(
+              data.chatModelProviders[firstValidProvider][0].name,
+            );
+            localStorage.setItem('chatModelProvider', firstValidProvider);
+            localStorage.setItem(
+              'chatModel',
+              data.chatModelProviders[firstValidProvider][0].name,
+            );
+          } else {
+            setSelectedChatModelProvider(null);
+            setSelectedChatModel(null);
+            localStorage.removeItem('chatModelProvider');
+            localStorage.removeItem('chatModel');
+          }
+        }
+
+        const currentEmbeddingProvider = selectedEmbeddingModelProvider;
+        const newEmbeddingProviders = Object.keys(
+          data.embeddingModelProviders || {},
+        );
+
+        if (!currentEmbeddingProvider && newEmbeddingProviders.length > 0) {
+          const firstProvider = newEmbeddingProviders[0];
+          const firstModel =
+            data.embeddingModelProviders[firstProvider]?.[0]?.name;
+
+          if (firstModel) {
+            setSelectedEmbeddingModelProvider(firstProvider);
+            setSelectedEmbeddingModel(firstModel);
+            localStorage.setItem('embeddingModelProvider', firstProvider);
+            localStorage.setItem('embeddingModel', firstModel);
+          }
+        } else if (
+          currentEmbeddingProvider &&
+          (!data.embeddingModelProviders ||
+            !data.embeddingModelProviders[currentEmbeddingProvider] ||
+            !Array.isArray(
+              data.embeddingModelProviders[currentEmbeddingProvider],
+            ) ||
+            data.embeddingModelProviders[currentEmbeddingProvider].length === 0)
+        ) {
+          const firstValidProvider = Object.entries(
+            data.embeddingModelProviders || {},
+          ).find(
+            ([_, models]) => Array.isArray(models) && models.length > 0,
+          )?.[0];
+
+          if (firstValidProvider) {
+            setSelectedEmbeddingModelProvider(firstValidProvider);
+            setSelectedEmbeddingModel(
+              data.embeddingModelProviders[firstValidProvider][0].name,
+            );
+            localStorage.setItem('embeddingModelProvider', firstValidProvider);
+            localStorage.setItem(
+              'embeddingModel',
+              data.embeddingModelProviders[firstValidProvider][0].name,
+            );
+          } else {
+            setSelectedEmbeddingModelProvider(null);
+            setSelectedEmbeddingModel(null);
+            localStorage.removeItem('embeddingModelProvider');
+            localStorage.removeItem('embeddingModel');
+          }
+        }
+
+        setConfig(data);
       }
 
       if (key === 'automaticImageSearch') {
@@ -559,9 +666,13 @@ const Page = () => {
                         {t('customOpenaiApiKey')}
                       </p>
                       <Input
-                        type="text"
+                        type="password"
                         placeholder={t('customOpenaiApiKey')}
-                        value={config.customOpenaiApiKey}
+                        value={
+                          config.customOpenaiApiKey
+                            ? '••••••••'
+                            : ''
+                        }
                         isSaving={savingStates['customOpenaiApiKey']}
                         onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                           setConfig((prev) => ({
@@ -569,9 +680,11 @@ const Page = () => {
                             customOpenaiApiKey: e.target.value,
                           }));
                         }}
-                        onSave={(value) =>
-                          saveConfig('customOpenaiApiKey', value)
-                        }
+                        onSave={(value) => {
+                          if (value !== '••••••••') {
+                            saveConfig('customOpenaiApiKey', value);
+                          }
+                        }}
                       />
                     </div>
                     <div className="flex flex-col space-y-1">
@@ -680,9 +793,13 @@ const Page = () => {
                     {t('openaiApiKey')}
                   </p>
                   <Input
-                    type="text"
+                    type="password"
                     placeholder={t('openaiApiKey')}
-                    value={config.openaiApiKey}
+                    value={
+                      config.openaiApiKey
+                        ? '••••••••'
+                        : ''
+                    }
                     isSaving={savingStates['openaiApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -690,7 +807,11 @@ const Page = () => {
                         openaiApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('openaiApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('openaiApiKey', value);
+                      }
+                    }}
                   />
                 </div>
 
@@ -718,9 +839,13 @@ const Page = () => {
                     {t('ollamaApiKey')}
                   </p>
                   <Input
-                    type="text"
+                    type="password"
                     placeholder={t('ollamaApiKey')}
-                    value={config.ollamaApiKey}
+                    value={
+                      config.ollamaApiKey
+                        ? '••••••••'
+                        : ''
+                    }
                     isSaving={savingStates['ollamaApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -728,7 +853,11 @@ const Page = () => {
                         ollamaApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('ollamaApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('ollamaApiKey', value);
+                      }
+                    }}
                   />
                 </div>
 
@@ -737,9 +866,11 @@ const Page = () => {
                     {t('groqApiKey')}
                   </p>
                   <Input
-                    type="text"
+                    type="password"
                     placeholder={t('groqApiKey')}
-                    value={config.groqApiKey}
+                    value={
+                      config.groqApiKey ? '••••••••' : ''
+                    }
                     isSaving={savingStates['groqApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -747,7 +878,11 @@ const Page = () => {
                         groqApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('groqApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('groqApiKey', value);
+                      }
+                    }}
                   />
                 </div>
 
@@ -756,9 +891,13 @@ const Page = () => {
                     {t('anthropicApiKey')}
                   </p>
                   <Input
-                    type="text"
+                    type="password"
                     placeholder={t('anthropicApiKey')}
-                    value={config.anthropicApiKey}
+                    value={
+                      config.anthropicApiKey
+                        ? '••••••••'
+                        : ''
+                    }
                     isSaving={savingStates['anthropicApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -766,7 +905,11 @@ const Page = () => {
                         anthropicApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('anthropicApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('anthropicApiKey', value);
+                      }
+                    }}
                   />
                 </div>
 
@@ -777,7 +920,9 @@ const Page = () => {
                   <Input
                     type="password"
                     placeholder={t('geminiApiKey')}
-                    value={config.geminiApiKey}
+                    value={
+                      config.geminiApiKey ? '••••••••' : ''
+                    }
                     isSaving={savingStates['geminiApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -785,7 +930,11 @@ const Page = () => {
                         geminiApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('geminiApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('geminiApiKey', value);
+                      }
+                    }}
                   />
                 </div>
 
@@ -794,9 +943,13 @@ const Page = () => {
                     {t('deepseekApiKey')}
                   </p>
                   <Input
-                    type="text"
+                    type="password"
                     placeholder={t('deepseekApiKey')}
-                    value={config.deepseekApiKey}
+                    value={
+                      config.deepseekApiKey
+                        ? '••••••••'
+                        : ''
+                    }
                     isSaving={savingStates['deepseekApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -804,7 +957,11 @@ const Page = () => {
                         deepseekApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('deepseekApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('deepseekApiKey', value);
+                      }
+                    }}
                   />
                 </div>
 
@@ -813,9 +970,11 @@ const Page = () => {
                     {t('aimlApiKey')}
                   </p>
                   <Input
-                    type="text"
+                    type="password"
                     placeholder={t('aimlApiKey')}
-                    value={config.aimlApiKey}
+                    value={
+                      config.aimlApiKey ? '••••••••' : ''
+                    }
                     isSaving={savingStates['aimlApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -823,7 +982,11 @@ const Page = () => {
                         aimlApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('aimlApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('aimlApiKey', value);
+                      }
+                    }}
                   />
                 </div>
 
@@ -876,7 +1039,11 @@ const Page = () => {
                   <Input
                     type="password"
                     placeholder={t('lemonadeApiKey')}
-                    value={config.lemonadeApiKey}
+                    value={
+                      config.lemonadeApiKey
+                        ? '••••••••'
+                        : ''
+                    }
                     isSaving={savingStates['lemonadeApiKey']}
                     onChange={(e) => {
                       setConfig((prev) => ({
@@ -884,7 +1051,11 @@ const Page = () => {
                         lemonadeApiKey: e.target.value,
                       }));
                     }}
-                    onSave={(value) => saveConfig('lemonadeApiKey', value)}
+                    onSave={(value) => {
+                      if (value !== '••••••••') {
+                        saveConfig('lemonadeApiKey', value);
+                      }
+                    }}
                   />
                 </div>
               </div>
