@@ -25,8 +25,16 @@ export const searchSearxng = async (
 ) => {
   const searxngURL = getSearxngApiEndpoint();
 
-  const url = new URL(`${searxngURL}/search?format=json`);
+  if (!searxngURL) {
+    console.error('SearXNG API endpoint is not configured.');
+    return { results: [], suggestions: [] };
+  }
+
+  const url = new URL(searxngURL);
+  url.pathname = url.pathname.replace(/\/$/, '') + '/search';
   url.searchParams.append('q', query);
+  url.searchParams.append('format', 'json');
+
 
   if (opts) {
     Object.keys(opts).forEach((key) => {
