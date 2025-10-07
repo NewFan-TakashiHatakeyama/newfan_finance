@@ -20,9 +20,6 @@ dist/
 .env.test.local
 .env.production.local
 
-# Config files
-config.toml
-
 # Log files
 logs/
 *.log
