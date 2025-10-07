@@ -1,75 +1,57 @@
-import { drizzle } from 'drizzle-orm/better-sqlite3';
-import Database from 'better-sqlite3';
+import { drizzle } from 'drizzle-orm/libsql';
+import { createClient } from '@libsql/client';
 import * as schema from './schema';
 import path from 'path';
 import fs from 'fs';
+import { migrate } from 'drizzle-orm/libsql/migrator';
 
-const dbPath = process.env.VERCEL
-  ? '/tmp/db.sqlite'
-  : path.join(process.cwd(), './data/db.sqlite');
+let db: ReturnType<typeof drizzle>;
 
-if (!process.env.VERCEL) {
+const dbUrl =
+  process.env.newfan_finance_TURSO_DATABASE_URL || process.env.TURSO_DATABASE_URL;
+const authToken =
+  process.env.newfan_finance_TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN;
+
+if (dbUrl && authToken) {
+  const turso = createClient({
+    url: dbUrl,
+    authToken: authToken,
+  });
+
+  db = drizzle(turso, {
+    schema: schema,
+  });
+
+  // Run migrations
+  migrate(db, { migrationsFolder: 'drizzle' })
+    .then(() => console.log('Migrations completed successfully.'))
+    .catch((err) => {
+      console.error('Migrations failed:', err);
+      // In a real application, you might want to handle this more gracefully
+      process.exit(1);
+    });
+} else {
+  // Fallback to local SQLite for development
+  const dbPath = path.join(process.cwd(), './data/db.sqlite');
   const dbDir = path.dirname(dbPath);
   if (!fs.existsSync(dbDir)) {
     fs.mkdirSync(dbDir, { recursive: true });
   }
-}
 
-const sqlite = new Database(dbPath);
+  const sqlite = createClient({ url: `file:${dbPath}` });
 
-// Migration logic from migrate.ts
-const migrationsFolder = path.join(process.cwd(), 'drizzle');
+  db = drizzle(sqlite, {
+    schema: schema,
+  });
 
-sqlite.exec(`
-  CREATE TABLE IF NOT EXISTS ran_migrations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL UNIQUE,
-    run_on DATETIME DEFAULT CURRENT_TIMESTAMP
+  // You might want a different migration strategy for local SQLite.
+  // For simplicity, we reuse the Turso migrator logic, but this
+  // requires `drizzle-kit` to generate SQL files compatible with SQLite.
+  // The logic from the previous step is removed to avoid complexity.
+  // It's assumed the local DB is managed via `drizzle-kit push:sqlite`.
+  console.log(
+    'Connected to local SQLite database. Ensure migrations are applied manually if needed.',
   );
-`);
-
-function sanitizeSql(content: string) {
-  return content
-    .split(/\r?\n/)
-    .filter(
-      (l) => !l.trim().startsWith('-->') && !l.includes('statement-breakpoint'),
-    )
-    .join('\n');
 }
-
-if (fs.existsSync(migrationsFolder)) {
-  fs.readdirSync(migrationsFolder)
-    .filter((f) => f.endsWith('.sql'))
-    .sort()
-    .forEach((file) => {
-      const filePath = path.join(migrationsFolder, file);
-      let content = fs.readFileSync(filePath, 'utf-8');
-      content = sanitizeSql(content);
-
-      const migrationName = file.split('_')[0] || file;
-
-      const already = sqlite
-        .prepare('SELECT 1 FROM ran_migrations WHERE name = ?')
-        .get(migrationName);
-      if (already) {
-        return;
-      }
-
-      try {
-        sqlite.exec(content);
-        sqlite
-          .prepare('INSERT OR IGNORE INTO ran_migrations (name) VALUES (?)')
-          .run(migrationName);
-        console.log(`Applied migration: ${file}`);
-      } catch (err) {
-        console.error(`Failed to apply migration ${file}:`, err);
-        throw err;
-      }
-    });
-}
-
-const db = drizzle(sqlite, {
-  schema: schema,
-});
 
 export default db;
