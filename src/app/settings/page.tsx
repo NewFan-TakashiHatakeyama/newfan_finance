@@ -882,7 +882,7 @@ const Page = () => {
                     {t('geminiApiKey')}
                   </p>
                   <Input
-                    type="text"
+                    type="password"
                     placeholder={t('geminiApiKey')}
                     value={config.geminiApiKey}
                     isSaving={savingStates['geminiApiKey']}
