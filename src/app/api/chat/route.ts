@@ -355,6 +355,7 @@ export const POST = async (req: Request) => {
 
     return new Response(responseStream.readable, {
       headers: {
+        ...corsHeaders,
         'Content-Type': 'text/event-stream',
         Connection: 'keep-alive',
         'Cache-Control': 'no-cache, no-transform',
@@ -364,7 +365,7 @@ export const POST = async (req: Request) => {
     console.error('An error occurred while processing chat request:', err);
     return Response.json(
       { message: 'An error occurred while processing chat request' },
-      { status: 500 },
+      { status: 500, headers: corsHeaders },
     );
   }
 };
