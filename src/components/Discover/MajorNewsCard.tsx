@@ -31,7 +31,7 @@ const MajorNewsCard = ({
               alt={item.title}
             />
           </div>
-          <div className="flex flex-col justify-center flex-1 py-4">
+          <div className="flex flex-col justify-center flex-1 py-4 overflow-hidden">
             <h2
               className="text-3xl font-light mb-3 leading-tight line-clamp-2"
               style={{ fontFamily: 'PP Editorial, serif' }}
@@ -70,7 +70,7 @@ const MajorNewsCard = ({
         </>
       ) : (
         <>
-          <div className="flex flex-col justify-center flex-1 py-4">
+          <div className="flex flex-col justify-center flex-1 py-4 overflow-hidden">
             <h2
               className="text-3xl font-light mb-3 leading-tight line-clamp-2"
               style={{ fontFamily: 'PP Editorial, serif' }}
