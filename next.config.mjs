@@ -4,7 +4,8 @@ const nextConfig = {
   images: {
     remotePatterns: [
       {
-        hostname: 's2.googleusercontent.com',
+        protocol: 'https',
+        hostname: 'mma.prnasia.com',
       },
     ],
   },

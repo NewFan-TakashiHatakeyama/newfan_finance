@@ -8,15 +8,7 @@ import SmallNewsCard from '@/components/Discover/SmallNewsCard';
 import MajorNewsCard from '@/components/Discover/MajorNewsCard';
 import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
-
-export interface Discover {
-  title: string;
-  content: string;
-  url: string;
-  thumbnail: string;
-  pubDate: string;
-  author: string;
-}
+import { Discover } from '@/lib/types/discover';
 
 const Page = () => {
   const { t } = useTranslation();
@@ -70,6 +62,7 @@ const Page = () => {
       data.blogs = data.blogs.filter((blog: Discover) => blog.thumbnail);
 
       setDiscover(data.blogs);
+      sessionStorage.setItem('discover_articles', JSON.stringify(data.blogs));
     } catch (err: any) {
       console.error('Error fetching data:', err.message);
       toast.error('Error fetching data');

@@ -1,7 +1,7 @@
-import { Discover } from '@/app/discover/page';
+import { Discover } from '@/lib/types/discover';
 import Link from 'next/link';
 import he from 'he';
-import { ExternalLink } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const SmallNewsCard = ({ item }: { item: Discover }) => {
@@ -14,8 +14,13 @@ const SmallNewsCard = ({ item }: { item: Discover }) => {
       })
     : '';
 
+  const encodedUrl = Buffer.from(item.url).toString('base64');
+
   return (
-    <div className="overflow-hidden bg-light-secondary dark:bg-dark-secondary shadow-sm shadow-light-200/10 dark:shadow-black/25 group flex flex-col">
+    <Link
+      href={`/discover/article/${encodedUrl}`}
+      className="overflow-hidden bg-light-secondary dark:bg-dark-secondary shadow-sm shadow-light-200/10 dark:shadow-black/25 group flex flex-col"
+    >
       <div className="relative aspect-video overflow-hidden">
         <img
           className="object-cover w-full h-full"
@@ -35,24 +40,13 @@ const SmallNewsCard = ({ item }: { item: Discover }) => {
           {item.content && he.decode(item.content)}
         </p>
         <div className="flex items-center gap-4 mt-2">
-          <a
-            href={item.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-xs text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-          >
-            元記事を読む <ExternalLink size={12} />
-          </a>
-          <Link
-            href={`/?q=「${item.title}」を日本語で要約してください`}
-            className="text-xs text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-            target="_blank"
-          >
-            {t('readAiSummary')}
-          </Link>
+          <span className="text-xs text-cyan-600 dark:text-cyan-400 group-hover:underline flex items-center gap-1 font-semibold">
+            記事全文を読む
+            <ArrowRight size={12} />
+          </span>
         </div>
       </div>
-    </div>
+    </Link>
   );
 };
 

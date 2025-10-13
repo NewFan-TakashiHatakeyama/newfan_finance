@@ -1,7 +1,7 @@
-import { Discover } from '@/app/discover/page';
+import { Discover } from '@/lib/types/discover';
 import Link from 'next/link';
 import he from 'he';
-import { ExternalLink } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const MajorNewsCard = ({
@@ -20,8 +20,13 @@ const MajorNewsCard = ({
       })
     : '';
 
+  const encodedUrl = Buffer.from(item.url).toString('base64');
+
   return (
-    <div className="w-full group flex flex-row items-stretch gap-6 h-60 py-3">
+    <Link
+      href={`/discover/article/${encodedUrl}`}
+      className="w-full group flex flex-row items-stretch gap-6 h-60 py-3"
+    >
       {isLeft ? (
         <>
           <div className="relative w-80 h-full overflow-hidden flex-shrink-0 block">
@@ -50,21 +55,9 @@ const MajorNewsCard = ({
               {item.content && he.decode(item.content)}
             </p>
             <div className="flex items-center gap-4 mt-2">
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-              >
-                元記事を読む <ExternalLink size={14} />
-              </a>
-              <Link
-                href={`/?q=「${item.title}」を日本語で要約してください`}
-                className="text-sm text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-                target="_blank"
-              >
-                {t('readAiSummary')}
-              </Link>
+              <span className="text-sm text-cyan-600 dark:text-cyan-400 group-hover:underline flex items-center gap-1 font-semibold">
+                記事全文を読む <ArrowRight size={14} />
+              </span>
             </div>
           </div>
         </>
@@ -89,21 +82,9 @@ const MajorNewsCard = ({
               {item.content && he.decode(item.content)}
             </p>
             <div className="flex items-center gap-4 mt-2">
-              <a
-                href={item.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-              >
-                元記事を読む <ExternalLink size={14} />
-              </a>
-              <Link
-                href={`/?q=「${item.title}」を日本語で要約してください`}
-                className="text-sm text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-                target="_blank"
-              >
-                {t('readAiSummary')}
-              </Link>
+              <span className="text-sm text-cyan-600 dark:text-cyan-400 group-hover:underline flex items-center gap-1 font-semibold">
+                記事全文を読む <ArrowRight size={14} />
+              </span>
             </div>
           </div>
           <div className="relative w-80 h-full overflow-hidden flex-shrink-0 block">
@@ -115,7 +96,7 @@ const MajorNewsCard = ({
           </div>
         </>
       )}
-    </div>
+    </Link>
   );
 };
 
