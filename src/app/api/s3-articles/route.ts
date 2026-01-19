@@ -31,7 +31,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const topic = searchParams.get('topic') || 'all';
-    const date = searchParams.get('date'); // YYYY-MM-DD形式
+    const date = searchParams.get('date') || undefined; // YYYY-MM-DD形式、nullをundefinedに変換
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
