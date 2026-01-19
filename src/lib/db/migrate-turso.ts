@@ -23,10 +23,14 @@ if (!dbUrl || !authToken) {
   process.exit(1);
 }
 
+// TypeScriptの型チェックを通過させるため、型アサーションを使用
+const dbUrlString: string = dbUrl;
+const authTokenString: string = authToken;
+
 async function runMigrations() {
   const turso = createClient({
-    url: dbUrl,
-    authToken: authToken,
+    url: dbUrlString,
+    authToken: authTokenString,
   });
 
   const migrationsFolder = path.join(process.cwd(), 'drizzle');

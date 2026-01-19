@@ -1,10 +1,33 @@
 export const POST = async (req: Request) => {
   try {
-    const body: {
+    // リクエストボディを安全に読み取る
+    let body: {
       lat: number;
       lng: number;
       measureUnit: 'Imperial' | 'Metric';
-    } = await req.json();
+    };
+
+    try {
+      const text = await req.text();
+      if (!text || text.trim() === '') {
+        console.error('[Weather API] Empty request body');
+        return Response.json(
+          {
+            message: 'Request body is required.',
+          },
+          { status: 400 },
+        );
+      }
+      body = JSON.parse(text);
+    } catch (parseError) {
+      console.error('[Weather API] JSON parse error:', parseError);
+      return Response.json(
+        {
+          message: 'Invalid JSON in request body.',
+        },
+        { status: 400 },
+      );
+    }
 
     console.log('[Weather API] Request received:', { lat: body.lat, lng: body.lng, measureUnit: body.measureUnit });
 

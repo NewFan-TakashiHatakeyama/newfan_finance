@@ -3,8 +3,12 @@ import { s3Client } from './s3-client';
 import { withRetry } from './s3-retry';
 import { handleS3Error } from './s3-error-handler';
 
-const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME!;
+const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || '';
 const ITEMS_PREFIX = 'prna/items';
+
+if (!BUCKET_NAME) {
+  console.warn('[Article Item Fetcher] AWS_S3_BUCKET_NAME is not set. S3 operations will fail.');
+}
 
 export interface ArticleItem {
   source: string;

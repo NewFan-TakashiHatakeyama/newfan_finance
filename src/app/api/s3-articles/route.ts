@@ -6,8 +6,12 @@ import { convertRSSItemToArticle, ArticleMetadata } from '@/lib/aws/article-conv
 import { withRetry } from '@/lib/aws/s3-retry';
 import { handleS3Error } from '@/lib/aws/s3-error-handler';
 
-const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME!;
+const BUCKET_NAME = process.env.AWS_S3_BUCKET_NAME || '';
 const BASE_PREFIX = process.env.AWS_S3_PREFIX || '';
+
+if (!BUCKET_NAME) {
+  console.warn('[S3 Articles API] AWS_S3_BUCKET_NAME is not set. S3 operations will fail.');
+}
 
 const TOPICS = ['capital', 'english', 'finance', 'market', 'prnewswire', 'real_estate', 'special'];
 

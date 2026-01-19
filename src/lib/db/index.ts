@@ -13,9 +13,10 @@ const authToken =
   process.env.newfan_finance_TURSO_AUTH_TOKEN || process.env.TURSO_AUTH_TOKEN;
 
 if (dbUrl && authToken) {
+  // TypeScriptの型チェックを通過させるため、型アサーションを使用
   const turso = createClient({
-    url: dbUrl,
-    authToken: authToken,
+    url: dbUrl as string,
+    authToken: authToken as string,
   });
 
   db = drizzle(turso, {
