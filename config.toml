@@ -12,7 +12,7 @@ API_KEY = false
 API_KEY = false
 
 [MODELS.GEMINI]
-API_KEY = "AIzaSyB9vltg1XU2j5lZU5JLWf2heF054EC_Gsw"
+API_KEY = ""
 
 [MODELS.CUSTOM_OPENAI]
 API_KEY = false
