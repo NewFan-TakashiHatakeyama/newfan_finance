@@ -110,8 +110,21 @@ export const getGroqApiKey = () =>
 export const getAnthropicApiKey = () =>
   process.env.ANTHROPIC_API_KEY || loadConfig().MODELS.ANTHROPIC.API_KEY;
 
-export const getGeminiApiKey = () =>
-  process.env.GEMINI_API_KEY || loadConfig().MODELS.GEMINI.API_KEY;
+export const getGeminiApiKey = () => {
+  // GEMINI_API_KEY または GOOGLE_API_KEY または config.toml から取得
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || loadConfig().MODELS.GEMINI.API_KEY;
+  
+  // デバッグログ（本番環境では削除推奨）
+  if (typeof window === 'undefined') {
+    console.log('[Config] Gemini API Key loaded:', {
+      hasApiKey: !!apiKey,
+      apiKeyLength: apiKey?.length || 0,
+      source: process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : process.env.GOOGLE_API_KEY ? 'GOOGLE_API_KEY' : 'config.toml',
+    });
+  }
+  
+  return apiKey;
+};
 
 export const getSearxngApiEndpoint = () =>
   process.env.SEARXNG_API_URL || loadConfig().API_ENDPOINTS.SEARXNG;

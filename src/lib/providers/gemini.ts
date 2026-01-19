@@ -65,7 +65,17 @@ const geminiEmbeddingModels: Record<string, string>[] = [
 export const loadGeminiChatModels = async () => {
   const geminiApiKey = getGeminiApiKey();
 
-  if (!geminiApiKey) return {};
+  console.log('[Gemini] API Key check:', {
+    hasApiKey: !!geminiApiKey,
+    apiKeyLength: geminiApiKey?.length || 0,
+    apiKeyPrefix: geminiApiKey ? `${geminiApiKey.substring(0, 10)}...` : 'N/A',
+    fromEnv: !!process.env.GEMINI_API_KEY,
+  });
+
+  if (!geminiApiKey) {
+    console.warn('[Gemini] API key is not set. Please set GEMINI_API_KEY environment variable or update config.toml');
+    return {};
+  }
 
   try {
     const chatModels: Record<string, ChatModel> = {};
@@ -81,9 +91,10 @@ export const loadGeminiChatModels = async () => {
       };
     });
 
+    console.log('[Gemini] Successfully loaded chat models');
     return chatModels;
   } catch (err) {
-    console.error(`Error loading Gemini models: ${err}`);
+    console.error(`[Gemini] Error loading Gemini models: ${err}`);
     return {};
   }
 };
@@ -91,7 +102,10 @@ export const loadGeminiChatModels = async () => {
 export const loadGeminiEmbeddingModels = async () => {
   const geminiApiKey = getGeminiApiKey();
 
-  if (!geminiApiKey) return {};
+  if (!geminiApiKey) {
+    console.warn('[Gemini] API key is not set for embeddings. Please set GEMINI_API_KEY environment variable or update config.toml');
+    return {};
+  }
 
   try {
     const embeddingModels: Record<string, EmbeddingModel> = {};
@@ -106,9 +120,10 @@ export const loadGeminiEmbeddingModels = async () => {
       };
     });
 
+    console.log('[Gemini] Successfully loaded embedding models');
     return embeddingModels;
   } catch (err) {
-    console.error(`Error loading Gemini embeddings models: ${err}`);
+    console.error(`[Gemini] Error loading Gemini embeddings models: ${err}`);
     return {};
   }
 };

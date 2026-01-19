@@ -182,6 +182,7 @@ const handleHistorySave = async (
   humanMessageId: string,
   focusMode: string,
   files: string[],
+  sessionId: string,
 ) => {
   const chat = await db.query.chats.findFirst({
     where: eq(chats.id, message.chatId),
@@ -198,6 +199,7 @@ const handleHistorySave = async (
         createdAt: new Date().toString(),
         focusMode: focusMode,
         files: fileData,
+        sessionId: sessionId,
       })
       .execute();
   } else if (JSON.stringify(chat.files ?? []) != JSON.stringify(fileData)) {
@@ -238,6 +240,9 @@ const handleHistorySave = async (
 
 export const POST = async (req: Request) => {
   try {
+    // リクエストヘッダーからセッションIDを取得
+    const sessionId = req.headers.get('x-session-id') || '';
+    
     const reqBody = (await req.json()) as Body;
 
     const parseBody = safeValidateBody(reqBody);
@@ -351,7 +356,7 @@ export const POST = async (req: Request) => {
     const encoder = new TextEncoder();
 
     handleEmitterEvents(stream, writer, encoder, message.chatId);
-    handleHistorySave(message, humanMessageId, body.focusMode, body.files);
+    handleHistorySave(message, humanMessageId, body.focusMode, body.files, sessionId);
 
     return new Response(responseStream.readable, {
       headers: {

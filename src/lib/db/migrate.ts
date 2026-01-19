@@ -103,6 +103,23 @@ fs.readdirSync(migrationsFolder)
 
         db.exec('DROP TABLE messages;');
         db.exec('ALTER TABLE messages_with_sources RENAME TO messages;');
+      } else if (migrationName === '0002') {
+        // Migration 0002: Add sessionId column to chats table
+        try {
+          // Check if column already exists
+          const tableInfo = db.prepare("PRAGMA table_info(chats)").all() as Array<{ name: string }>;
+          const hasSessionId = tableInfo.some(col => col.name === 'sessionId');
+          
+          if (!hasSessionId) {
+            db.exec(content);
+            console.log(`Applied migration: ${file} - Added sessionId column to chats table`);
+          } else {
+            console.log(`Skipping migration ${file}: sessionId column already exists`);
+          }
+        } catch (err) {
+          console.error(`Error applying migration ${file}:`, err);
+          throw err;
+        }
       } else {
         db.exec(content);
       }

@@ -1,6 +1,6 @@
 import db from '@/lib/db';
 import { chats, messages } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 export const GET = async (
   req: Request,
@@ -8,9 +8,16 @@ export const GET = async (
 ) => {
   try {
     const { id } = await params;
+    
+    // リクエストヘッダーからセッションIDを取得
+    const sessionId = req.headers.get('x-session-id') || '';
+
+    if (!sessionId) {
+      return Response.json({ message: 'Session ID is required' }, { status: 400 });
+    }
 
     const chatExists = await db.query.chats.findFirst({
-      where: eq(chats.id, id),
+      where: and(eq(chats.id, id), eq(chats.sessionId, sessionId)),
     });
 
     if (!chatExists) {
@@ -28,10 +35,28 @@ export const GET = async (
       },
       { status: 200 },
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error('Error in getting chat by id: ', err);
+    
+    // TursoデータベースにsessionIdカラムが存在しない場合のエラーハンドリング
+    if (err?.code === 'SQL_INPUT_ERROR' && err?.message?.includes('no such column: chats.sessionId')) {
+      console.error('Turso database migration required. Please run: npm run db:migrate:turso');
+      return Response.json(
+        { 
+          message: 'Database migration required. Please contact administrator.',
+          chat: null,
+          messages: []
+        },
+        { status: 500 },
+      );
+    }
+    
     return Response.json(
-      { message: 'An error has occurred.' },
+      { 
+        message: 'An error has occurred.',
+        chat: null,
+        messages: []
+      },
       { status: 500 },
     );
   }
@@ -43,16 +68,23 @@ export const DELETE = async (
 ) => {
   try {
     const { id } = await params;
+    
+    // リクエストヘッダーからセッションIDを取得
+    const sessionId = req.headers.get('x-session-id') || '';
+
+    if (!sessionId) {
+      return Response.json({ message: 'Session ID is required' }, { status: 400 });
+    }
 
     const chatExists = await db.query.chats.findFirst({
-      where: eq(chats.id, id),
+      where: and(eq(chats.id, id), eq(chats.sessionId, sessionId)),
     });
 
     if (!chatExists) {
       return Response.json({ message: 'Chat not found' }, { status: 404 });
     }
 
-    await db.delete(chats).where(eq(chats.id, id)).execute();
+    await db.delete(chats).where(and(eq(chats.id, id), eq(chats.sessionId, sessionId))).execute();
     await db.delete(messages).where(eq(messages.chatId, id)).execute();
 
     return Response.json(

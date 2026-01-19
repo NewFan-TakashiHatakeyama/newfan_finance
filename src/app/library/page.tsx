@@ -2,6 +2,7 @@
 
 import DeleteChat from '@/components/DeleteChat';
 import { cn, formatTimeDifference } from '@/lib/utils';
+import { getSessionId } from '@/lib/utils/session';
 import { BookOpenText, ClockIcon, Delete, ScanEye } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
@@ -21,16 +22,21 @@ const Page = () => {
     const fetchChats = async () => {
       setLoading(true);
 
+      // セッションIDを取得
+      const sessionId = getSessionId();
+
       const res = await fetch(`/api/chats`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
+          'x-session-id': sessionId,
         },
       });
 
       const data = await res.json();
 
-      setChats(data.chats);
+      // データが正しく返されているか確認し、デフォルト値を設定
+      setChats(Array.isArray(data.chats) ? data.chats : []);
       setLoading(false);
     };
 

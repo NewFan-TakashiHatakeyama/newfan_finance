@@ -5,4 +5,5 @@ export interface Discover {
   thumbnail: string;
   pubDate: string;
   author: string;
+  category?: string; // トピックフィルタリング用（オプショナル）
 }

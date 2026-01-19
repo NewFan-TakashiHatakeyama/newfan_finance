@@ -6,7 +6,10 @@ export const POST = async (req: Request) => {
       measureUnit: 'Imperial' | 'Metric';
     } = await req.json();
 
-    if (!body.lat || !body.lng) {
+    console.log('[Weather API] Request received:', { lat: body.lat, lng: body.lng, measureUnit: body.measureUnit });
+
+    if (!body.lat || !body.lng || isNaN(body.lat) || isNaN(body.lng)) {
+      console.error('[Weather API] Invalid request parameters');
       return Response.json(
         {
           message: 'Invalid request.',
@@ -15,19 +18,47 @@ export const POST = async (req: Request) => {
       );
     }
 
-    const res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${body.lat}&longitude=${body.lng}&current=weather_code,temperature_2m,is_day,relative_humidity_2m,wind_speed_10m&timezone=auto${
-        body.measureUnit === 'Metric' ? '' : '&temperature_unit=fahrenheit'
-      }${body.measureUnit === 'Metric' ? '' : '&wind_speed_unit=mph'}`,
-    );
+    const apiUrl = `https://api.open-meteo.com/v1/forecast?latitude=${body.lat}&longitude=${body.lng}&current=weather_code,temperature_2m,is_day,relative_humidity_2m,wind_speed_10m&timezone=auto${
+      body.measureUnit === 'Metric' ? '' : '&temperature_unit=fahrenheit'
+    }${body.measureUnit === 'Metric' ? '' : '&wind_speed_unit=mph'}`;
+
+    console.log('[Weather API] Fetching from:', apiUrl);
+
+    const res = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      console.error(`[Weather API] HTTP error! status: ${res.status}`);
+      return Response.json(
+        {
+          message: 'Failed to fetch weather data.',
+        },
+        { status: res.status },
+      );
+    }
 
     const data = await res.json();
+    console.log('[Weather API] Response received:', data);
 
     if (data.error) {
-      console.error(`Error fetching weather data: ${data.reason}`);
+      console.error(`[Weather API] Error in response: ${data.reason}`);
       return Response.json(
         {
           message: 'An error has occurred.',
+        },
+        { status: 500 },
+      );
+    }
+
+    if (!data.current) {
+      console.error('[Weather API] Missing current weather data');
+      return Response.json(
+        {
+          message: 'Invalid weather data received.',
         },
         { status: 500 },
       );

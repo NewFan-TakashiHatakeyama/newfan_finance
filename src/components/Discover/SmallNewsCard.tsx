@@ -3,9 +3,26 @@ import Link from 'next/link';
 import he from 'he';
 import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
 
 const SmallNewsCard = ({ item }: { item: Discover }) => {
   const { t } = useTranslation();
+  const [imageError, setImageError] = useState(false);
+  
+  // 画像が有効かどうかを判定する関数
+  const isValidThumbnail = (thumbnail: string | undefined): boolean => {
+    if (!thumbnail) return false;
+    const trimmed = thumbnail.trim();
+    if (trimmed === '') return false;
+    if (trimmed.includes('/ad_placeholder')) return false;
+    if (trimmed.startsWith('data:')) return false; // データURIも除外（必要に応じて）
+    return true;
+  };
+  
+  const [hasValidThumbnail, setHasValidThumbnail] = useState(
+    isValidThumbnail(item.thumbnail)
+  );
+
   const formattedDate = item.pubDate
     ? new Date(item.pubDate).toLocaleDateString('ja-JP', {
         year: 'numeric',
@@ -16,18 +33,26 @@ const SmallNewsCard = ({ item }: { item: Discover }) => {
 
   const encodedUrl = Buffer.from(item.url).toString('base64');
 
+  const handleImageError = () => {
+    setImageError(true);
+    setHasValidThumbnail(false);
+  };
+
   return (
     <Link
       href={`/discover/article/${encodedUrl}`}
       className="overflow-hidden bg-light-secondary dark:bg-dark-secondary shadow-sm shadow-light-200/10 dark:shadow-black/25 group flex flex-col"
     >
-      <div className="relative aspect-video overflow-hidden">
-        <img
-          className="object-cover w-full h-full"
-          src={item.thumbnail}
-          alt={item.title}
-        />
-      </div>
+      {hasValidThumbnail && !imageError && (
+        <div className="relative aspect-video overflow-hidden">
+          <img
+            className="object-cover w-full h-full"
+            src={item.thumbnail}
+            alt={item.title}
+            onError={handleImageError}
+          />
+        </div>
+      )}
       <div className="p-4 flex flex-col flex-grow">
         <h3 className="font-semibold text-sm mb-2 leading-tight line-clamp-2">
           {item.title && he.decode(item.title)}
@@ -36,10 +61,7 @@ const SmallNewsCard = ({ item }: { item: Discover }) => {
           <span>{formattedDate}</span>
           {item.author && <span> / {item.author}</span>}
         </div>
-        <p className="text-black/60 dark:text-white/60 text-xs leading-relaxed line-clamp-2 flex-grow">
-          {item.content && he.decode(item.content)}
-        </p>
-        <div className="flex items-center gap-4 mt-2">
+        <div className="flex items-center gap-4 mt-auto">
           <span className="text-xs text-cyan-600 dark:text-cyan-400 group-hover:underline flex items-center gap-1 font-semibold">
             記事全文を読む
             <ArrowRight size={12} />

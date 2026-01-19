@@ -45,6 +45,7 @@ const Page = () => {
 
   const fetchArticles = async (topic: string) => {
     setLoading(true);
+    console.log(`[Discover Page] Fetching articles for topic: ${topic}`);
     try {
       const res = await fetch(`/api/discover?topic=${topic}`, {
         method: 'GET',
@@ -53,19 +54,35 @@ const Page = () => {
         },
       });
 
+      console.log(`[Discover Page] API response status: ${res.status}`);
+
       const data = await res.json();
+      console.log(`[Discover Page] API response data:`, {
+        blogsCount: data.blogs?.length || 0,
+        hasBlogs: !!data.blogs,
+        message: data.message,
+      });
 
       if (!res.ok) {
-        throw new Error(data.message);
+        console.error(`[Discover Page] API error: ${data.message}`);
+        throw new Error(data.message || 'Failed to fetch articles');
       }
 
-      data.blogs = data.blogs.filter((blog: Discover) => blog.thumbnail);
+      // サムネイルがない記事も表示（デフォルト画像が設定されている）
+      // data.blogs = data.blogs.filter((blog: Discover) => blog.thumbnail);
 
-      setDiscover(data.blogs);
-      sessionStorage.setItem('discover_articles', JSON.stringify(data.blogs));
+      const blogs = data.blogs || [];
+      console.log(`[Discover Page] Setting ${blogs.length} articles to state`);
+      setDiscover(blogs);
+      sessionStorage.setItem('discover_articles', JSON.stringify(blogs));
     } catch (err: any) {
-      console.error('Error fetching data:', err.message);
-      toast.error('Error fetching data');
+      console.error('[Discover Page] Error fetching data:', err);
+      console.error('[Discover Page] Error details:', {
+        message: err.message,
+        stack: err.stack,
+      });
+      toast.error(`Error fetching data: ${err.message || 'Unknown error'}`);
+      setDiscover([]); // エラー時は空配列を設定
     } finally {
       setLoading(false);
     }
@@ -86,6 +103,7 @@ const Page = () => {
                 alt="logo"
                 width={200}
                 height={50}
+                style={{ width: 'auto', height: 'auto' }}
               />
             </div>
             <div className="flex flex-row items-center space-x-2 overflow-x-auto">
@@ -108,38 +126,28 @@ const Page = () => {
         </div>
 
         {loading ? (
-          <div className="flex flex-row items-center justify-center min-h-screen">
-            <svg
-              aria-hidden="true"
-              className="w-8 h-8 text-light-200 fill-light-secondary dark:text-[#202020] animate-spin dark:fill-[#ffffff3b]"
-              viewBox="0 0 100 101"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M100 50.5908C100.003 78.2051 78.1951 100.003 50.5908 100C22.9765 99.9972 0.997224 78.018 1 50.4037C1.00281 22.7993 22.8108 0.997224 50.4251 1C78.0395 1.00281 100.018 22.8108 100 50.4251ZM9.08164 50.594C9.06312 73.3997 27.7909 92.1272 50.5966 92.1457C73.4023 92.1642 92.1298 73.4365 92.1483 50.6308C92.1669 27.8251 73.4392 9.0973 50.6335 9.07878C27.8278 9.06026 9.10003 27.787 9.08164 50.594Z"
-                fill="currentColor"
-              />
-              <path
-                d="M93.9676 39.0409C96.393 38.4037 97.8624 35.9116 96.9801 33.5533C95.1945 28.8227 92.871 24.3692 90.0681 20.348C85.6237 14.1775 79.4473 9.36872 72.0454 6.45794C64.6435 3.54717 56.3134 2.65431 48.3133 3.89319C45.869 4.27179 44.3768 6.77534 45.014 9.20079C45.6512 11.6262 48.1343 13.0956 50.5786 12.717C56.5073 11.8281 62.5542 12.5399 68.0406 14.7911C73.527 17.0422 78.2187 20.7487 81.5841 25.4923C83.7976 28.5886 85.4467 32.059 86.4416 35.7474C87.1273 38.1189 89.5423 39.6781 91.9676 39.0409Z"
-                fill="currentFill"
-              />
-            </svg>
+          <div className="flex flex-col items-center justify-center min-h-screen py-20">
+            {/* モダンなスピナー */}
+            <div className="relative w-16 h-16 mb-4">
+              <div className="absolute inset-0 border-4 border-cyan-200 dark:border-cyan-900 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-transparent border-t-cyan-600 dark:border-t-cyan-400 rounded-full animate-spin"></div>
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-sm font-medium animate-pulse">
+              記事を読み込んでいます...
+            </p>
           </div>
-        ) : (
+        ) : (discover && discover.length > 0) ? (
           <div className="flex flex-col gap-4 pb-28 pt-5 lg:pb-8 w-full">
             <div className="block lg:hidden">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {discover?.map((item, i) => (
+                {discover.map((item, i) => (
                   <SmallNewsCard key={`mobile-${i}`} item={item} />
                 ))}
               </div>
             </div>
 
             <div className="hidden lg:block">
-              {discover &&
-                discover.length > 0 &&
-                (() => {
+              {(() => {
                   const sections = [];
                   let index = 0;
 
@@ -256,6 +264,15 @@ const Page = () => {
                   return sections;
                 })()}
             </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center min-h-screen py-20">
+            <p className="text-gray-500 dark:text-gray-400 text-lg">
+              記事が見つかりませんでした
+            </p>
+            <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">
+              ブラウザのコンソール（F12）でエラーを確認してください
+            </p>
           </div>
         )}
       </div>

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import he from 'he';
 import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { useState } from 'react';
 
 const MajorNewsCard = ({
   item,
@@ -12,6 +13,22 @@ const MajorNewsCard = ({
   isLeft?: boolean;
 }) => {
   const { t } = useTranslation();
+  const [imageError, setImageError] = useState(false);
+  
+  // 画像が有効かどうかを判定する関数
+  const isValidThumbnail = (thumbnail: string | undefined): boolean => {
+    if (!thumbnail) return false;
+    const trimmed = thumbnail.trim();
+    if (trimmed === '') return false;
+    if (trimmed.includes('/ad_placeholder')) return false;
+    if (trimmed.startsWith('data:')) return false; // データURIも除外（必要に応じて）
+    return true;
+  };
+  
+  const [hasValidThumbnail, setHasValidThumbnail] = useState(
+    isValidThumbnail(item.thumbnail)
+  );
+
   const formattedDate = item.pubDate
     ? new Date(item.pubDate).toLocaleDateString('ja-JP', {
         year: 'numeric',
@@ -22,6 +39,11 @@ const MajorNewsCard = ({
 
   const encodedUrl = Buffer.from(item.url).toString('base64');
 
+  const handleImageError = () => {
+    setImageError(true);
+    setHasValidThumbnail(false);
+  };
+
   return (
     <Link
       href={`/discover/article/${encodedUrl}`}
@@ -29,13 +51,16 @@ const MajorNewsCard = ({
     >
       {isLeft ? (
         <>
-          <div className="relative w-80 h-full overflow-hidden flex-shrink-0 block">
-            <img
-              className="object-cover w-full h-full"
-              src={item.thumbnail}
-              alt={item.title}
-            />
-          </div>
+          {hasValidThumbnail && !imageError && (
+            <div className="relative w-80 h-full overflow-hidden flex-shrink-0 block">
+              <img
+                className="object-cover w-full h-full"
+                src={item.thumbnail}
+                alt={item.title}
+                onError={handleImageError}
+              />
+            </div>
+          )}
           <div className="flex flex-col justify-center flex-1 py-4 overflow-hidden">
             <h2
               className="text-3xl font-light mb-3 leading-tight line-clamp-2"
@@ -51,10 +76,7 @@ const MajorNewsCard = ({
                 </span>
               )}
             </div>
-            <p className="text-black/60 dark:text-white/60 text-base leading-relaxed line-clamp-2 flex-grow">
-              {item.content && he.decode(item.content)}
-            </p>
-            <div className="flex items-center gap-4 mt-2">
+            <div className="flex items-center gap-4 mt-auto">
               <span className="text-sm text-cyan-600 dark:text-cyan-400 group-hover:underline flex items-center gap-1 font-semibold">
                 記事全文を読む <ArrowRight size={14} />
               </span>
@@ -78,22 +100,22 @@ const MajorNewsCard = ({
                 </span>
               )}
             </div>
-            <p className="text-black/60 dark:text-white/60 text-base leading-relaxed line-clamp-2 flex-grow">
-              {item.content && he.decode(item.content)}
-            </p>
-            <div className="flex items-center gap-4 mt-2">
+            <div className="flex items-center gap-4 mt-auto">
               <span className="text-sm text-cyan-600 dark:text-cyan-400 group-hover:underline flex items-center gap-1 font-semibold">
                 記事全文を読む <ArrowRight size={14} />
               </span>
             </div>
           </div>
-          <div className="relative w-80 h-full overflow-hidden flex-shrink-0 block">
-            <img
-              className="object-cover w-full h-full"
-              src={item.thumbnail}
-              alt={item.title}
-            />
-          </div>
+          {hasValidThumbnail && !imageError && (
+            <div className="relative w-80 h-full overflow-hidden flex-shrink-0 block">
+              <img
+                className="object-cover w-full h-full"
+                src={item.thumbnail}
+                alt={item.title}
+                onError={handleImageError}
+              />
+            </div>
+          )}
         </>
       )}
     </Link>

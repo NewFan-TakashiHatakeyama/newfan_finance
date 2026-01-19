@@ -1,39 +1,40 @@
 [GENERAL]
-SIMILARITY_MEASURE = "cosine" # "cosine" or "dot"
-KEEP_ALIVE = "5m" # How long to keep Ollama models loaded into memory. (Instead of using -1 use "-1m")
+SIMILARITY_MEASURE = "cosine"
+KEEP_ALIVE = "5m"
 
 [MODELS.OPENAI]
-API_KEY = ""
+API_KEY = false
 
 [MODELS.GROQ]
-API_KEY = ""
+API_KEY = false
 
 [MODELS.ANTHROPIC]
-API_KEY = ""
+API_KEY = false
 
 [MODELS.GEMINI]
-API_KEY = "AIzaSyBa0Nbv_A7EhIKq30mqiYucK5lDzzUBjl0"
+API_KEY = "AIzaSyB9vltg1XU2j5lZU5JLWf2heF054EC_Gsw"
 
 [MODELS.CUSTOM_OPENAI]
-API_KEY = ""
+API_KEY = false
 API_URL = ""
 MODEL_NAME = ""
 
 [MODELS.OLLAMA]
-API_URL = "" # Ollama API URL - http://host.docker.internal:11434
+API_URL = ""
+API_KEY = false
 
 [MODELS.DEEPSEEK]
-API_KEY = ""
+API_KEY = false
 
 [MODELS.AIMLAPI]
-API_KEY = "" # Required to use AI/ML API chat and embedding models
+API_KEY = false
 
 [MODELS.LM_STUDIO]
-API_URL = "" # LM Studio API URL - http://host.docker.internal:1234
+API_URL = ""
 
 [MODELS.LEMONADE]
-API_URL = "" # Lemonade API URL - http://host.docker.internal:8000
-API_KEY = "" # Optional API key for Lemonade
+API_URL = ""
+API_KEY = false
 
 [API_ENDPOINTS]
-SEARXNG = "" # SearxNG API URL - http://localhost:32768
+SEARXNG = ""

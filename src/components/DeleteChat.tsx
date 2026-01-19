@@ -29,10 +29,15 @@ const DeleteChat = ({
   const handleDelete = async () => {
     setLoading(true);
     try {
+      // セッションIDを取得
+      const { getSessionId } = await import('@/lib/utils/session');
+      const sessionId = getSessionId();
+
       const res = await fetch(`/api/chats/${chatId}`, {
         method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
+          'x-session-id': sessionId,
         },
       });
 

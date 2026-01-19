@@ -33,4 +33,5 @@ export const chats = sqliteTable('chats', {
   files: text('files', { mode: 'json' })
     .$type<File[]>()
     .default(sql`'[]'`),
+  sessionId: text('sessionId').notNull().default(''),
 });

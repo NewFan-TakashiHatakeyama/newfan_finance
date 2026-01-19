@@ -252,10 +252,22 @@ const loadMessages = async (
   setFiles: (files: File[]) => void,
   setFileIds: (fileIds: string[]) => void,
 ) => {
+  // セッションIDを取得
+  const getSessionId = async () => {
+    if (typeof window !== 'undefined') {
+      const { getSessionId: getSessionIdUtil } = await import('@/lib/utils/session');
+      return getSessionIdUtil();
+    }
+    return '';
+  };
+
+  const sessionId = await getSessionId();
+
   const res = await fetch(`/api/chats/${chatId}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
+      'x-session-id': sessionId,
     },
   });
 
@@ -267,7 +279,7 @@ const loadMessages = async (
 
   const data = await res.json();
 
-  const messages = data.messages as Message[];
+  const messages = (Array.isArray(data.messages) ? data.messages : []) as Message[];
 
   setMessages(messages);
 
@@ -374,6 +386,9 @@ export const ChatProvider = ({
   const messagesRef = useRef<Message[]>([]);
 
   const chatTurns = useMemo((): ChatTurn[] => {
+    if (!Array.isArray(messages)) {
+      return [];
+    }
     return messages.filter(
       (msg): msg is ChatTurn => msg.role === 'user' || msg.role === 'assistant',
     );
@@ -605,35 +620,48 @@ export const ChatProvider = ({
     ]);
 
     const messageHandler = async (data: any) => {
+      // データのバリデーション
+      if (!data || typeof data !== 'object') {
+        console.error('[useChat] Invalid data received:', data);
+        return;
+      }
+
       if (data.type === 'error') {
-        toast.error(data.data);
+        const errorMessage = data.data || 'An error occurred';
+        toast.error(errorMessage);
         setLoading(false);
         return;
       }
 
       if (data.type === 'sources') {
+        // data.dataが存在し、配列であることを確認
+        const sources = Array.isArray(data.data) ? data.data : [];
+        
         setMessages((prevMessages) => [
           ...prevMessages,
           {
-            messageId: data.messageId,
+              messageId: data.messageId || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
             chatId: chatId!,
             role: 'source',
-            sources: data.data,
+            sources: sources,
             createdAt: new Date(),
           },
         ]);
-        if (data.data.length > 0) {
+        if (sources.length > 0) {
           setMessageAppeared(true);
         }
       }
 
       if (data.type === 'message') {
+        // data.dataが存在することを確認
+        const messageContent = data.data || '';
+        
         if (!added) {
           setMessages((prevMessages) => [
             ...prevMessages,
             {
-              content: data.data,
-              messageId: data.messageId,
+              content: messageContent,
+              messageId: data.messageId || `msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
               chatId: chatId!,
               role: 'assistant',
               createdAt: new Date(),
@@ -648,14 +676,14 @@ export const ChatProvider = ({
                 message.messageId === data.messageId &&
                 message.role === 'assistant'
               ) {
-                return { ...message, content: message.content + data.data };
+                return { ...message, content: (message.content || '') + messageContent };
               }
 
               return message;
             }),
           );
         }
-        recievedMessage += data.data;
+        recievedMessage += messageContent;
       }
 
       if (data.type === 'messageEnd') {
@@ -722,10 +750,16 @@ export const ChatProvider = ({
 
     const messageIndex = messages.findIndex((m) => m.messageId === messageId);
 
+    // セッションIDを取得
+    const sessionId = typeof window !== 'undefined' 
+      ? (await import('@/lib/utils/session')).getSessionId()
+      : '';
+
     const res = await fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'x-session-id': sessionId,
       },
       body: JSON.stringify({
         content: message,

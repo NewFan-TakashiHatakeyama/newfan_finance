@@ -9,10 +9,14 @@ import { Discover } from '@/lib/types/discover';
 import { useParams } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 
+interface ArticleDetail extends Discover {
+  contentHtml?: string; // HTMLコンテンツ
+}
+
 function ArticlePage() {
   const params = useParams<{ id: string }>();
   const { t } = useTranslation();
-  const [article, setArticle] = useState<Discover | null>(null);
+  const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -20,23 +24,38 @@ function ArticlePage() {
       setLoading(false);
       return;
     }
-    const fetchArticle = () => {
+    const fetchArticle = async () => {
       try {
-        const decodedUrl = Buffer.from(params.id, 'base64').toString('utf-8');
-        const articlesJson = sessionStorage.getItem('discover_articles');
-        if (articlesJson) {
-          const articles: Discover[] = JSON.parse(articlesJson);
-          const foundArticle = articles.find((a) => a.url === decodedUrl);
-          if (foundArticle) {
-            setArticle(foundArticle);
+        console.log('Fetching article detail from API...');
+        
+        // 新しいAPIエンドポイントから記事詳細を取得
+        // URLエンコードされたIDをそのまま使用（Next.jsが自動的に処理）
+        const apiUrl = `/api/discover/article/${encodeURIComponent(params.id)}`;
+        console.log('Fetching from API:', apiUrl);
+        
+        const res = await fetch(apiUrl, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.article) {
+            setArticle({
+              ...data.article,
+              contentHtml: data.article.content, // HTMLコンテンツを保持
+            });
           } else {
-            console.error('Article not found in sessionStorage');
+            console.error('Article data not found in response');
           }
         } else {
-          console.error('No articles found in sessionStorage');
+          const errorData = await res.json().catch(() => ({}));
+          console.error('API error:', res.status, errorData);
         }
       } catch (error) {
-        console.error('Error fetching or finding article:', error);
+        console.error('Error fetching article detail:', error);
       } finally {
         setLoading(false);
       }
@@ -46,7 +65,42 @@ function ArticlePage() {
   }, [params.id]);
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          {/* スケルトン: 戻るボタン */}
+          <div className="mb-8 animate-pulse">
+            <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </div>
+          
+          {/* スケルトン: タイトル */}
+          <div className="mb-4 animate-pulse">
+            <div className="h-12 w-full bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
+            <div className="h-12 w-3/4 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </div>
+          
+          {/* スケルトン: 日付・著者 */}
+          <div className="mb-8 animate-pulse">
+            <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </div>
+          
+          {/* スケルトン: 画像 */}
+          <div className="relative aspect-video overflow-hidden rounded-lg mb-8 animate-pulse">
+            <div className="w-full h-full bg-gray-200 dark:bg-gray-700"></div>
+          </div>
+          
+          {/* スケルトン: コンテンツ */}
+          <div className="prose dark:prose-invert max-w-none space-y-4 animate-pulse">
+            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-4 w-5/6 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-4 w-4/5 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!article) {
@@ -60,6 +114,18 @@ function ArticlePage() {
         day: '2-digit',
       })
     : '';
+
+  // 画像が有効かどうかを判定する関数
+  const isValidThumbnail = (thumbnail: string | undefined): boolean => {
+    if (!thumbnail) return false;
+    const trimmed = thumbnail.trim();
+    if (trimmed === '') return false;
+    if (trimmed.includes('/ad_placeholder')) return false;
+    if (trimmed.startsWith('data:')) return false; // データURIも除外
+    return true;
+  };
+
+  const hasValidThumbnail = isValidThumbnail(article.thumbnail);
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -87,16 +153,25 @@ function ArticlePage() {
             </span>
           )}
         </div>
-        <div className="relative aspect-video overflow-hidden rounded-lg mb-8">
-          <Image
-            src={article.thumbnail}
-            alt={article.title}
-            layout="fill"
-            objectFit="cover"
-          />
-        </div>
+        {hasValidThumbnail && (
+          <div className="relative aspect-video overflow-hidden rounded-lg mb-8">
+            <Image
+              src={article.thumbnail}
+              alt={article.title}
+              layout="fill"
+              objectFit="cover"
+            />
+          </div>
+        )}
         <div className="prose dark:prose-invert max-w-none">
-          <p>{he.decode(article.content)}</p>
+          {article.contentHtml ? (
+            <div 
+              dangerouslySetInnerHTML={{ __html: article.contentHtml }}
+              className="article-content"
+            />
+          ) : (
+            <p>{he.decode(article.content)}</p>
+          )}
         </div>
         <div className="flex items-center gap-4 mt-8">
           <a

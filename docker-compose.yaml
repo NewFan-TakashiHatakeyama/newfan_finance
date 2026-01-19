@@ -17,8 +17,9 @@ services:
     environment:
       - SEARXNG_API_URL=http://searxng:8080
       - DATA_DIR=/home/perplexica
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
     ports:
-      - 3000:3000
+      - 3001:3000
     networks:
       - perplexica-network
     volumes:
