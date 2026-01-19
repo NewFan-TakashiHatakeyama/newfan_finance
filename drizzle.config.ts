@@ -1,6 +1,4 @@
-import { defineConfig } from 'drizzle-kit';
-
-export default defineConfig({
+export default {
   dialect: 'turso',
   schema: './src/lib/db/schema.ts',
   out: './drizzle',
@@ -14,4 +12,4 @@ export default defineConfig({
       process.env.TURSO_AUTH_TOKEN ||
       '',
   },
-});
+};

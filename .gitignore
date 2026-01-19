@@ -31,6 +31,11 @@ logs/
 .DS_Store
 Thumbs.db
 
+# ESLint legacy config (removed, using eslint.config.js instead)
+.eslintrc.json
+.eslintrc.js
+.eslintrc
+
 # Db
 db.sqlite
 /searxng

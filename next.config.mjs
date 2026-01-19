@@ -10,6 +10,10 @@ const nextConfig = {
     ],
   },
   serverExternalPackages: ['pdf-parse'],
+  // ESLintの設定を無視（ビルド時のみ）
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
 };
 
 export default nextConfig;
