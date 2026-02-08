@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  PRNA Article Ingestor - S3 Event Notification → Lambda → DynamoDB
+  S3 に追加された記事 JSON を自動的に DynamoDB に永続化する
+
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues:
+      - production
+      - staging
+      - development
+    Description: Deployment environment
+
+  UpstashRedisUrl:
+    Type: String
+    Default: ''
+    Description: Upstash Redis REST API URL (optional, for cache invalidation)
+
+  UpstashRedisToken:
+    Type: String
+    Default: ''
+    NoEcho: true
+    Description: Upstash Redis REST API Token (optional, for cache invalidation)
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 30
+    MemorySize: 256
+    Architectures:
+      - arm64
+
+Resources:
+  # ============================
+  # DynamoDB Table
+  # ============================
+  PrnaArticlesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: prna-articles
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: url_hash
+          AttributeType: S
+        - AttributeName: category
+          AttributeType: S
+        - AttributeName: pubDateEpoch
+          AttributeType: N
+      KeySchema:
+        - AttributeName: url_hash
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: category-pubDateEpoch-index
+          KeySchema:
+            - AttributeName: category
+              KeyType: HASH
+            - AttributeName: pubDateEpoch
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: newfan-finance
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ============================
+  # Lambda Function
+  # ============================
+  PrnaArticleIngestorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: prna-article-ingestor
+      Handler: dist/index.handler
+      CodeUri: ./
+      Description: S3 に追加された PRNA 記事を DynamoDB に永続化する Lambda 関数
+      Environment:
+        Variables:
+          DYNAMODB_TABLE_NAME: !Ref PrnaArticlesTable
+          NODE_ENV: !Ref Environment
+          UPSTASH_REDIS_REST_URL: !Ref UpstashRedisUrl
+          UPSTASH_REDIS_REST_TOKEN: !Ref UpstashRedisToken
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PrnaArticlesTable
+        - S3ReadPolicy:
+            BucketName: newfan-finance
+      Events:
+        S3ArticleCreated:
+          Type: S3
+          Properties:
+            Bucket: !Sub 'arn:aws:s3:::newfan-finance'
+            Events: s3:ObjectCreated:*
+            Filter:
+              S3Key:
+                Rules:
+                  - Name: prefix
+                    Value: prna/items/
+                  - Name: suffix
+                    Value: .json
+      Tags:
+        Project: newfan-finance
+        Environment: !Ref Environment
+
+  # ============================
+  # CloudWatch Alarms
+  # ============================
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: prna-article-ingestor-errors
+      AlarmDescription: Lambda 関数のエラー検知
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PrnaArticleIngestorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: prna-article-ingestor-duration
+      AlarmDescription: Lambda 関数の実行時間が長い場合の警告
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PrnaArticleIngestorFunction
+      ExtendedStatistic: p95
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10000
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+
+Outputs:
+  PrnaArticlesTableName:
+    Description: DynamoDB テーブル名
+    Value: !Ref PrnaArticlesTable
+
+  PrnaArticlesTableArn:
+    Description: DynamoDB テーブル ARN
+    Value: !GetAtt PrnaArticlesTable.Arn
+
+  PrnaArticleIngestorFunctionArn:
+    Description: Lambda 関数 ARN
+    Value: !GetAtt PrnaArticleIngestorFunction.Arn
+
+  PrnaArticleIngestorFunctionName:
+    Description: Lambda 関数名
+    Value: !Ref PrnaArticleIngestorFunction
