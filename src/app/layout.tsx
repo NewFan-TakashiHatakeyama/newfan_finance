@@ -14,10 +14,56 @@ const montserrat = Montserrat({
   fallback: ['Arial', 'sans-serif'],
 });
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL || 'https://finance.newfan.co.jp';
+
 export const metadata: Metadata = {
-  title: 'NewFan-Finance',
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: 'NewFan-Finance | AI金融ニュース・分析プラットフォーム',
+    template: '%s | NewFan-Finance',
+  },
   description:
-    'NewFan-Finance is an AI powered chatbot that is connected to the internet.',
+    'NewFan-Financeは、AI搭載の金融ニュース分析プラットフォームです。最新の金融・投資・市場ニュースをリアルタイムで配信し、AIチャットボットが質問に答えます。',
+  applicationName: 'NewFan-Finance',
+  authors: [{ name: 'NewFan-Finance' }],
+  formatDetection: {
+    telephone: false,
+    email: false,
+    address: false,
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'ja_JP',
+    url: siteUrl,
+    siteName: 'NewFan-Finance',
+    title: 'NewFan-Finance | AI金融ニュース・分析プラットフォーム',
+    description:
+      'AI搭載の金融ニュース分析プラットフォーム。最新の金融・投資・市場ニュースをリアルタイムで配信。',
+    images: [
+      {
+        url: '/icon.png',
+        width: 440,
+        height: 440,
+        alt: 'NewFan-Finance',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary',
+    title: 'NewFan-Finance | AI金融ニュース・分析プラットフォーム',
+    description:
+      'AI搭載の金融ニュース分析プラットフォーム。最新の金融・投資・市場ニュースをリアルタイムで配信。',
+    images: ['/icon.png'],
+  },
+  icons: {
+    icon: [
+      { url: '/icon-50.png', sizes: '50x50', type: 'image/png' },
+      { url: '/icon-100.png', sizes: '100x100', type: 'image/png' },
+      { url: '/icon.png', sizes: '440x440', type: 'image/png' },
+    ],
+    apple: [{ url: '/icon.png', sizes: '440x440', type: 'image/png' }],
+  },
 };
 
 export default function RootLayout({
@@ -26,7 +72,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html className="h-full" lang="en" suppressHydrationWarning>
+    <html className="h-full" lang="ja" suppressHydrationWarning>
       <body className={cn('h-full', montserrat.className)}>
         <ThemeProvider>
           <I18nProvider>

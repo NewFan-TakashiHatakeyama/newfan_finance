@@ -30,7 +30,7 @@ export async function generateMetadata({
 
   const description = article.plainTextContent.slice(0, 160);
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || 'https://newfan-finance.com';
+    process.env.NEXT_PUBLIC_SITE_URL || 'https://finance.newfan.co.jp';
   const articleUrl = `${siteUrl}/discover/article/${resolvedParams.id}`;
 
   return {
@@ -67,6 +67,21 @@ export async function generateMetadata({
   };
 }
 
+// --- カテゴリ表示名変換 ---
+
+const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
+  finance: '金融・投資',
+  market: '市場動向',
+  capital: '資本取引',
+  real_estate: '不動産',
+  special: '専門分野',
+  prnewswire: 'PR Newswire',
+};
+
+function getCategoryDisplayName(category: string): string {
+  return CATEGORY_DISPLAY_NAMES[category] || category || 'ニュース';
+}
+
 // --- JSON-LD 構造化データ ---
 
 function generateArticleJsonLd(
@@ -74,7 +89,7 @@ function generateArticleJsonLd(
   id: string,
 ): object {
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || 'https://newfan-finance.com';
+    process.env.NEXT_PUBLIC_SITE_URL || 'https://finance.newfan.co.jp';
 
   return {
     '@context': 'https://schema.org',
@@ -89,7 +104,8 @@ function generateArticleJsonLd(
     },
     publisher: {
       '@type': 'Organization',
-      name: 'NewFan-Finance',
+      name: '株式会社NewFan',
+      url: 'https://www.newfan.co.jp',
       logo: {
         '@type': 'ImageObject',
         url: `${siteUrl}/icon.png`,
@@ -108,6 +124,48 @@ function generateArticleJsonLd(
   };
 }
 
+// --- パンくずリスト JSON-LD ---
+
+function generateBreadcrumbJsonLd(
+  article: ArticleData,
+  id: string,
+): object {
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || 'https://finance.newfan.co.jp';
+  const categoryName = getCategoryDisplayName(article.category);
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'ホーム',
+        item: siteUrl,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: 'ニュース',
+        item: `${siteUrl}/discover`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 3,
+        name: categoryName,
+        item: `${siteUrl}/discover?topic=${article.category}`,
+      },
+      {
+        '@type': 'ListItem',
+        position: 4,
+        name: article.title,
+        item: `${siteUrl}/discover/article/${id}`,
+      },
+    ],
+  };
+}
+
 // --- Page Component (Server) ---
 
 export default async function ArticlePage({
@@ -122,14 +180,24 @@ export default async function ArticlePage({
     notFound();
   }
 
-  const jsonLd = generateArticleJsonLd(article, resolvedParams.id);
+  const articleJsonLd = generateArticleJsonLd(article, resolvedParams.id);
+  const breadcrumbJsonLd = generateBreadcrumbJsonLd(
+    article,
+    resolvedParams.id,
+  );
 
   return (
     <>
-      {/* JSON-LD 構造化データ */}
+      {/* NewsArticle JSON-LD 構造化データ */}
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+      />
+
+      {/* BreadcrumbList JSON-LD 構造化データ */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
 
       {/* 記事コンテンツ (Client Component) */}

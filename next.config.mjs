@@ -22,6 +22,18 @@ const nextConfig = {
         protocol: 'https',
         hostname: '*.globenewswire.com',
       },
+      {
+        protocol: 'https',
+        hostname: '*.prnasia.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.businesswire.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.newswire.com',
+      },
     ],
   },
   serverExternalPackages: ['pdf-parse'],

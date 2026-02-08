@@ -1,26 +1,27 @@
 import { Discover } from '@/lib/types/discover';
 import Link from 'next/link';
+import Image from 'next/image';
 import he from 'he';
 import { ArrowRight } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
 
+/**
+ * 画像が有効かどうかを判定する
+ */
+const isValidThumbnail = (thumbnail: string | undefined): boolean => {
+  if (!thumbnail) return false;
+  const trimmed = thumbnail.trim();
+  if (trimmed === '') return false;
+  if (trimmed.includes('/ad_placeholder')) return false;
+  if (trimmed.startsWith('data:')) return false;
+  return true;
+};
+
 const SmallNewsCard = ({ item }: { item: Discover }) => {
   const { t } = useTranslation();
-  const [imageError, setImageError] = useState(false);
-  
-  // 画像が有効かどうかを判定する関数
-  const isValidThumbnail = (thumbnail: string | undefined): boolean => {
-    if (!thumbnail) return false;
-    const trimmed = thumbnail.trim();
-    if (trimmed === '') return false;
-    if (trimmed.includes('/ad_placeholder')) return false;
-    if (trimmed.startsWith('data:')) return false; // データURIも除外（必要に応じて）
-    return true;
-  };
-  
   const [hasValidThumbnail, setHasValidThumbnail] = useState(
-    isValidThumbnail(item.thumbnail)
+    isValidThumbnail(item.thumbnail),
   );
 
   const formattedDate = item.pubDate
@@ -34,7 +35,6 @@ const SmallNewsCard = ({ item }: { item: Discover }) => {
   const encodedUrl = Buffer.from(item.url).toString('base64');
 
   const handleImageError = () => {
-    setImageError(true);
     setHasValidThumbnail(false);
   };
 
@@ -43,12 +43,15 @@ const SmallNewsCard = ({ item }: { item: Discover }) => {
       href={`/discover/article/${encodedUrl}`}
       className="overflow-hidden bg-light-secondary dark:bg-dark-secondary shadow-sm shadow-light-200/10 dark:shadow-black/25 group flex flex-col"
     >
-      {hasValidThumbnail && !imageError && (
+      {hasValidThumbnail && (
         <div className="relative aspect-video overflow-hidden">
-          <img
-            className="object-cover w-full h-full"
-            src={item.thumbnail}
-            alt={item.title}
+          <Image
+            src={item.thumbnail!}
+            alt={item.title ? he.decode(item.title) : ''}
+            fill
+            className="object-cover"
+            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            loading="lazy"
             onError={handleImageError}
           />
         </div>

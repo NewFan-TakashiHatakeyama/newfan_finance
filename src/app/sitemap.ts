@@ -10,7 +10,7 @@ import { MetadataRoute } from 'next';
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl =
-    process.env.NEXT_PUBLIC_SITE_URL || 'https://newfan-finance.com';
+    process.env.NEXT_PUBLIC_SITE_URL || 'https://finance.newfan.co.jp';
 
   // 静的ページ
   const staticPages: MetadataRoute.Sitemap = [
