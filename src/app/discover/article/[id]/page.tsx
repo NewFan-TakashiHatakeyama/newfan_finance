@@ -1,198 +1,139 @@
-'use client';
-import { useEffect, useState } from 'react';
-import he from 'he';
-import { ExternalLink } from 'lucide-react';
-import Image from 'next/image';
-import Link from 'next/link';
-import { useTranslation } from 'react-i18next';
-import { Discover } from '@/lib/types/discover';
-import { useParams } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import {
+  getArticleById,
+  ArticleData,
+} from '@/lib/services/article-fetcher';
+import ArticleContent from './ArticleContent';
 
-interface ArticleDetail extends Discover {
-  contentHtml?: string; // HTMLコンテンツ
-}
+/**
+ * ISR: 5 分間キャッシュされた HTML を返し、
+ * バックグラウンドで再生成する (stale-while-revalidate)
+ */
+export const revalidate = 300;
 
-function ArticlePage() {
-  const params = useParams<{ id: string }>();
-  const { t } = useTranslation();
-  const [article, setArticle] = useState<ArticleDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+// --- Dynamic Metadata (SEO) ---
 
-  useEffect(() => {
-    if (!params.id) {
-      setLoading(false);
-      return;
-    }
-    const fetchArticle = async () => {
-      try {
-        console.log('Fetching article detail from API...');
-        
-        // 新しいAPIエンドポイントから記事詳細を取得
-        // URLエンコードされたIDをそのまま使用（Next.jsが自動的に処理）
-        const apiUrl = `/api/discover/article/${encodeURIComponent(params.id)}`;
-        console.log('Fetching from API:', apiUrl);
-        
-        const res = await fetch(apiUrl, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (res.ok) {
-          const data = await res.json();
-          if (data.article) {
-            setArticle({
-              ...data.article,
-              contentHtml: data.article.content, // HTMLコンテンツを保持
-            });
-          } else {
-            console.error('Article data not found in response');
-          }
-        } else {
-          const errorData = await res.json().catch(() => ({}));
-          console.error('API error:', res.status, errorData);
-        }
-      } catch (error) {
-        console.error('Error fetching article detail:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchArticle();
-  }, [params.id]);
-
-  if (loading) {
-    return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* スケルトン: 戻るボタン */}
-          <div className="mb-8 animate-pulse">
-            <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
-          </div>
-          
-          {/* スケルトン: タイトル */}
-          <div className="mb-4 animate-pulse">
-            <div className="h-12 w-full bg-gray-200 dark:bg-gray-700 rounded mb-2"></div>
-            <div className="h-12 w-3/4 bg-gray-200 dark:bg-gray-700 rounded"></div>
-          </div>
-          
-          {/* スケルトン: 日付・著者 */}
-          <div className="mb-8 animate-pulse">
-            <div className="h-5 w-32 bg-gray-200 dark:bg-gray-700 rounded"></div>
-          </div>
-          
-          {/* スケルトン: 画像 */}
-          <div className="relative aspect-video overflow-hidden rounded-lg mb-8 animate-pulse">
-            <div className="w-full h-full bg-gray-200 dark:bg-gray-700"></div>
-          </div>
-          
-          {/* スケルトン: コンテンツ */}
-          <div className="prose dark:prose-invert max-w-none space-y-4 animate-pulse">
-            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-4 w-5/6 bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-4 w-4/5 bg-gray-200 dark:bg-gray-700 rounded"></div>
-            <div className="h-4 w-full bg-gray-200 dark:bg-gray-700 rounded"></div>
-          </div>
-        </div>
-      </div>
-    );
-  }
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const resolvedParams = await params;
+  const article = await getArticleById(resolvedParams.id);
 
   if (!article) {
-    return <div>Article not found</div>;
+    return {
+      title: '記事が見つかりません | NewFan-Finance',
+    };
   }
 
-  const formattedDate = article.pubDate
-    ? new Date(article.pubDate).toLocaleDateString('ja-JP', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      })
-    : '';
+  const description = article.plainTextContent.slice(0, 160);
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || 'https://newfan-finance.com';
+  const articleUrl = `${siteUrl}/discover/article/${resolvedParams.id}`;
 
-  // 画像が有効かどうかを判定する関数
-  const isValidThumbnail = (thumbnail: string | undefined): boolean => {
-    if (!thumbnail) return false;
-    const trimmed = thumbnail.trim();
-    if (trimmed === '') return false;
-    if (trimmed.includes('/ad_placeholder')) return false;
-    if (trimmed.startsWith('data:')) return false; // データURIも除外
-    return true;
+  return {
+    title: `${article.title} | NewFan-Finance`,
+    description,
+    openGraph: {
+      title: article.title,
+      description,
+      url: articleUrl,
+      siteName: 'NewFan-Finance',
+      type: 'article',
+      publishedTime: article.pubDate,
+      authors: [article.author],
+      ...(article.thumbnail && {
+        images: [
+          {
+            url: article.thumbnail,
+            width: 1200,
+            height: 630,
+            alt: article.title,
+          },
+        ],
+      }),
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: article.title,
+      description,
+      ...(article.thumbnail && { images: [article.thumbnail] }),
+    },
+    alternates: {
+      canonical: articleUrl,
+    },
   };
-
-  const hasValidThumbnail = isValidThumbnail(article.thumbnail);
-
-  return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="mb-8">
-          <Link
-            href="/discover"
-            className="inline-flex items-center text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            ニュース一覧に戻る
-          </Link>
-        </div>
-        <h1
-          className="text-4xl font-bold mb-4"
-          style={{ fontFamily: 'PP Editorial, serif' }}
-        >
-          {he.decode(article.title)}
-        </h1>
-        <div className="flex items-center text-sm text-gray-500 mb-4">
-          <span>{formattedDate}</span>
-          {article.author && (
-            <span className="ml-4 bg-gray-200 dark:bg-gray-700 rounded-full px-3 py-1 text-xs">
-              {article.author}
-            </span>
-          )}
-        </div>
-        {hasValidThumbnail && (
-          <div className="relative aspect-video overflow-hidden rounded-lg mb-8">
-            <Image
-              src={article.thumbnail}
-              alt={article.title}
-              layout="fill"
-              objectFit="cover"
-            />
-          </div>
-        )}
-        <div className="prose dark:prose-invert max-w-none">
-          {article.contentHtml ? (
-            <div 
-              dangerouslySetInnerHTML={{ __html: article.contentHtml }}
-              className="article-content"
-            />
-          ) : (
-            <p>{he.decode(article.content)}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-4 mt-8">
-          <a
-            href={article.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-          >
-            元記事を読む <ExternalLink size={14} />
-          </a>
-          <Link
-            href={`/?q=「${article.title}」を日本語で要約してください`}
-            className="text-cyan-600 dark:text-cyan-400 hover:underline flex items-center gap-1"
-            target="_blank"
-          >
-            {t('readAiSummary')}
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
 }
 
-export default ArticlePage;
+// --- JSON-LD 構造化データ ---
+
+function generateArticleJsonLd(
+  article: ArticleData,
+  id: string,
+): object {
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || 'https://newfan-finance.com';
+
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: article.title,
+    description: article.plainTextContent.slice(0, 160),
+    url: `${siteUrl}/discover/article/${id}`,
+    datePublished: article.pubDate,
+    author: {
+      '@type': 'Organization',
+      name: article.author,
+    },
+    publisher: {
+      '@type': 'Organization',
+      name: 'NewFan-Finance',
+      logo: {
+        '@type': 'ImageObject',
+        url: `${siteUrl}/icon.png`,
+      },
+    },
+    ...(article.thumbnail && {
+      image: {
+        '@type': 'ImageObject',
+        url: article.thumbnail,
+      },
+    }),
+    mainEntityOfPage: {
+      '@type': 'WebPage',
+      '@id': `${siteUrl}/discover/article/${id}`,
+    },
+  };
+}
+
+// --- Page Component (Server) ---
+
+export default async function ArticlePage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const resolvedParams = await params;
+  const article = await getArticleById(resolvedParams.id);
+
+  if (!article) {
+    notFound();
+  }
+
+  const jsonLd = generateArticleJsonLd(article, resolvedParams.id);
+
+  return (
+    <>
+      {/* JSON-LD 構造化データ */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
+      {/* 記事コンテンツ (Client Component) */}
+      <ArticleContent article={article} />
+    </>
+  );
+}

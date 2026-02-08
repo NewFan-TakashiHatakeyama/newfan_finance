@@ -41,3 +41,6 @@ db.sqlite
 /searxng
 
 certificates
+
+*.md
+*.zip

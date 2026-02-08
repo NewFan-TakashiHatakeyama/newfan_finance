@@ -14,6 +14,14 @@ const nextConfig = {
         protocol: 'https',
         hostname: 'mma.prnasia.com',
       },
+      {
+        protocol: 'https',
+        hostname: '*.prnewswire.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.globenewswire.com',
+      },
     ],
   },
   serverExternalPackages: ['pdf-parse'],
