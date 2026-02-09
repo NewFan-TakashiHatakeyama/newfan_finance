@@ -145,12 +145,12 @@ const Page = () => {
                 style={{ width: 'auto', height: 'auto' }}
               />
             </div>
-            <div className="flex flex-row items-center space-x-2 overflow-x-auto">
+            <div className="flex flex-row flex-wrap items-center gap-2">
               {topics.map((t, i) => (
                 <div
                   key={i}
                   className={cn(
-                    'border-[0.1px] rounded-full text-sm px-3 py-1 text-nowrap transition duration-200 cursor-pointer',
+                    'border-[0.1px] rounded-full text-sm px-3 py-1 whitespace-nowrap transition duration-200 cursor-pointer',
                     activeTopic === t.key
                       ? 'text-cyan-700 dark:text-cyan-300 bg-cyan-300/20 border-cyan-700/60 dar:bg-cyan-300/30 dark:border-cyan-300/40'
                       : 'border-black/30 dark:border-white/30 text-black/70 dark:text-white/70 hover:text-black dark:hover:text-white hover:border-black/40 dark:hover:border-white/40 hover:bg-black/5 dark:hover:bg-white/5',
