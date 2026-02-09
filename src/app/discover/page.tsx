@@ -37,6 +37,10 @@ const Page = () => {
       key: 'special',
     },
     {
+      display: t('englishNews'),
+      key: 'english',
+    },
+    {
       display: t('prNewswire'),
       key: 'prnewswire',
     },

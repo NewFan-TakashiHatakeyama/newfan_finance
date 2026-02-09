@@ -75,6 +75,7 @@ const CATEGORY_DISPLAY_NAMES: Record<string, string> = {
   capital: '資本取引',
   real_estate: '不動産',
   special: '専門分野',
+  english: 'English',
   prnewswire: 'PR Newswire',
 };
 

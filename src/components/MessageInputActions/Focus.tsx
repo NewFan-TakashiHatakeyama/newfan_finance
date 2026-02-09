@@ -3,6 +3,7 @@ import {
   ChevronDown,
   CircleDollarSign,
   FileInput,
+  Globe,
   Layers,
   Newspaper,
   ScanEye,
@@ -56,6 +57,12 @@ const focusModes = [
     description:
       'スタートアップ、フィンテック、グリーン投資、代替資産など、新興または専門性の高い分野',
     icon: <SwatchBook size={20} />,
+  },
+  {
+    key: 'english',
+    title: 'English',
+    description: '英語圏のグローバルニュース・プレスリリース (English articles)',
+    icon: <Globe size={20} />,
   },
   {
     key: 'prnewswire',

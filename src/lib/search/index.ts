@@ -44,6 +44,12 @@ export const searchHandlers: Record<string, MetaSearchAgentType> = {
     rerank: true,
     rerankThreshold: 0.3,
   }),
+  english: new S3VectorsSearchAgent({
+    category: 'english',
+    topK: 10,
+    rerank: true,
+    rerankThreshold: 0.3,
+  }),
   prnewswire: new S3VectorsSearchAgent({
     topK: 10,
     rerank: true,
