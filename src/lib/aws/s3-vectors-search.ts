@@ -99,10 +99,13 @@ export async function generateQueryEmbedding(
   text: string,
 ): Promise<number[]> {
   if (!EMBEDDING_API_KEY) {
+    console.error('[S3VectorsSearch] GEMINI_API_KEY / GOOGLE_API_KEY が未設定');
     throw new Error(
       'GEMINI_API_KEY or GOOGLE_API_KEY is not set for embedding generation',
     );
   }
+
+  console.log(`[S3VectorsSearch] Embedding 生成開始: "${text.slice(0, 80)}..."`);
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${EMBEDDING_API_KEY}`;
 
@@ -118,6 +121,7 @@ export async function generateQueryEmbedding(
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error(`[S3VectorsSearch] Embedding API エラー: ${response.status}`, errorText.slice(0, 300));
     throw new Error(`Gemini Embedding API error: ${response.status} ${errorText}`);
   }
 
@@ -126,11 +130,13 @@ export async function generateQueryEmbedding(
   };
 
   if (!data.embedding?.values || !Array.isArray(data.embedding.values)) {
+    console.error('[S3VectorsSearch] Embedding レスポンス異常:', JSON.stringify(data).slice(0, 300));
     throw new Error(
       `Unexpected Gemini response: ${JSON.stringify(data).slice(0, 200)}`,
     );
   }
 
+  console.log(`[S3VectorsSearch] Embedding 生成完了: ${data.embedding.values.length} 次元`);
   return data.embedding.values;
 }
 
@@ -171,11 +177,13 @@ export async function queryVectors(
     commandInput.filter = { category };
   }
 
+  console.log(`[S3VectorsSearch] QueryVectors: bucket=${VECTOR_BUCKET}, index=${VECTOR_INDEX}, topK=${topK}, category=${category || '(all)'}`);
+
   const response = await client.send(
     new QueryVectorsCommand(commandInput),
   );
 
-  return (response.vectors || []).map((v) => ({
+  const results = (response.vectors || []).map((v) => ({
     key: v.key!,
     distance: v.distance ?? 1,
     metadata: {
@@ -186,6 +194,13 @@ export async function queryVectors(
       pub_date: (v.metadata as Record<string, string>)?.pub_date || '',
     },
   }));
+
+  console.log(`[S3VectorsSearch] QueryVectors 結果: ${results.length} 件`);
+  if (results.length > 0) {
+    console.log(`[S3VectorsSearch] Top 3:`, results.slice(0, 3).map((r) => `${r.metadata.title.slice(0, 50)} (dist=${r.distance.toFixed(4)}, cat=${r.metadata.category})`));
+  }
+
+  return results;
 }
 
 // --- DynamoDB 記事全文取得 ---
@@ -250,6 +265,8 @@ export async function searchArticles(
   query: string,
   options: SearchOptions = {},
 ): Promise<Document[]> {
+  console.log(`[S3VectorsSearch] searchArticles 開始: query="${query.slice(0, 100)}", options=${JSON.stringify(options)}`);
+
   // 1. クエリ Embedding 生成
   const queryVector = await generateQueryEmbedding(query);
 
@@ -257,6 +274,7 @@ export async function searchArticles(
   const vectorResults = await queryVectors(queryVector, options);
 
   if (vectorResults.length === 0) {
+    console.log('[S3VectorsSearch] 検索結果 0 件 → 空の Document[] を返却');
     return [];
   }
 

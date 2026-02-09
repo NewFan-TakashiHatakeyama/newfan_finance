@@ -1,16 +1,14 @@
-import MetaSearchAgent, { MetaSearchAgentType } from '@/lib/search/metaSearchAgent';
+import { MetaSearchAgentType } from '@/lib/search/metaSearchAgent';
 import S3VectorsSearchAgent from '@/lib/search/s3VectorsSearchAgent';
-import prompts from '../prompts';
 
 /**
  * フォーカスモード → 検索ハンドラーのマッピング
  *
- * PRNA 記事カテゴリ (finance, market, capital, real_estate, special, prnewswire)
- * は S3 Vectors セマンティック検索エージェントにルーティングする。
- * その他のモードは従来の MetaSearchAgent (SearxNG Web 検索) を使用。
+ * 全モードで S3 Vectors セマンティック検索エージェントを使用。
+ * カテゴリ別モード (finance, market 等) は該当カテゴリでフィルタリング。
+ * prnewswire モード (デフォルト) はカテゴリフィルタなしで全記事を検索。
  */
 export const searchHandlers: Record<string, MetaSearchAgentType> = {
-  // --- S3 Vectors 検索 (PRNA 記事セマンティック検索) ---
   finance: new S3VectorsSearchAgent({
     category: 'finance',
     topK: 10,
@@ -45,61 +43,5 @@ export const searchHandlers: Record<string, MetaSearchAgentType> = {
     topK: 10,
     rerank: true,
     rerankThreshold: 0.3,
-  }),
-
-  // --- Web 検索 (従来の MetaSearchAgent) ---
-  webSearch: new MetaSearchAgent({
-    activeEngines: [],
-    queryGeneratorPrompt: prompts.webSearchRetrieverPrompt,
-    responsePrompt: prompts.webSearchResponsePrompt,
-    queryGeneratorFewShots: prompts.webSearchRetrieverFewShots,
-    rerank: true,
-    rerankThreshold: 0.3,
-    searchWeb: true,
-  }),
-  academicSearch: new MetaSearchAgent({
-    activeEngines: ['arxiv', 'google scholar', 'pubmed'],
-    queryGeneratorPrompt: prompts.webSearchRetrieverPrompt,
-    responsePrompt: prompts.webSearchResponsePrompt,
-    queryGeneratorFewShots: prompts.webSearchRetrieverFewShots,
-    rerank: true,
-    rerankThreshold: 0,
-    searchWeb: true,
-  }),
-  writingAssistant: new MetaSearchAgent({
-    activeEngines: [],
-    queryGeneratorPrompt: '',
-    queryGeneratorFewShots: [],
-    responsePrompt: prompts.writingAssistantPrompt,
-    rerank: true,
-    rerankThreshold: 0,
-    searchWeb: false,
-  }),
-  wolframAlphaSearch: new MetaSearchAgent({
-    activeEngines: ['wolframalpha'],
-    queryGeneratorPrompt: prompts.webSearchRetrieverPrompt,
-    responsePrompt: prompts.webSearchResponsePrompt,
-    queryGeneratorFewShots: prompts.webSearchRetrieverFewShots,
-    rerank: false,
-    rerankThreshold: 0,
-    searchWeb: true,
-  }),
-  youtubeSearch: new MetaSearchAgent({
-    activeEngines: ['youtube'],
-    queryGeneratorPrompt: prompts.webSearchRetrieverPrompt,
-    responsePrompt: prompts.webSearchResponsePrompt,
-    queryGeneratorFewShots: prompts.webSearchRetrieverFewShots,
-    rerank: true,
-    rerankThreshold: 0.3,
-    searchWeb: true,
-  }),
-  redditSearch: new MetaSearchAgent({
-    activeEngines: ['reddit'],
-    queryGeneratorPrompt: prompts.webSearchRetrieverPrompt,
-    responsePrompt: prompts.webSearchResponsePrompt,
-    queryGeneratorFewShots: prompts.webSearchRetrieverFewShots,
-    rerank: true,
-    rerankThreshold: 0.3,
-    searchWeb: true,
   }),
 };

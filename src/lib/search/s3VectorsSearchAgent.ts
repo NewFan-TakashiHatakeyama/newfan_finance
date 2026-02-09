@@ -177,14 +177,17 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
         // S3 Vectors でセマンティック検索
         const searchOptions: SearchOptions = {
           topK: this.config.topK,
-          ...(this.config.category && { category: this.config.category }),
+          ...(this.config.category ? { category: this.config.category } : {}),
         };
+
+        console.log(`[S3VectorsAgent] 検索実行: query="${question.slice(0, 80)}", category=${this.config.category || '(all)'}, topK=${this.config.topK}`);
 
         try {
           const documents = await searchArticles(question, searchOptions);
+          console.log(`[S3VectorsAgent] 検索結果: ${documents.length} 件の Document を取得`);
           return { query: question, docs: documents };
         } catch (error) {
-          console.error('[S3VectorsSearch] Search failed:', error);
+          console.error('[S3VectorsAgent] Search failed:', error);
           return { query: question, docs: [] };
         }
       }),
