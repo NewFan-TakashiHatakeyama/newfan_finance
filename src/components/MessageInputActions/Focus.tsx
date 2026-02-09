@@ -1,12 +1,10 @@
 import {
-  BadgePercent,
   Building2,
   ChevronDown,
   CircleDollarSign,
   FileInput,
-  Globe,
+  Layers,
   Newspaper,
-  Pencil,
   ScanEye,
   SwatchBook,
   TrendingUp,
@@ -22,6 +20,12 @@ import { Fragment } from 'react';
 import { useChat } from '@/lib/hooks/useChat';
 
 const focusModes = [
+  {
+    key: 'allCategories',
+    title: '全カテゴリ',
+    description: '全カテゴリの記事を横断的にセマンティック検索',
+    icon: <Layers size={20} />,
+  },
   {
     key: 'finance',
     title: '金融・投資',

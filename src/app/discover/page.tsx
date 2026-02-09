@@ -1,7 +1,7 @@
 'use client';
 
-import { Globe2Icon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useEffect, useState, useCallback } from 'react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import SmallNewsCard from '@/components/Discover/SmallNewsCard';
@@ -9,6 +9,9 @@ import MajorNewsCard from '@/components/Discover/MajorNewsCard';
 import { useTranslation } from 'react-i18next';
 import Image from 'next/image';
 import { Discover } from '@/lib/types/discover';
+
+/** 1ページあたりの記事数 */
+const PAGE_SIZE = 20;
 
 const Page = () => {
   const { t } = useTranslation();
@@ -43,54 +46,86 @@ const Page = () => {
   const [loading, setLoading] = useState(true);
   const [activeTopic, setActiveTopic] = useState<string>(topics[0].key);
 
-  const fetchArticles = async (topic: string) => {
-    setLoading(true);
-    console.log(`[Discover Page] Fetching articles for topic: ${topic}`);
-    try {
-      const res = await fetch(`/api/discover?topic=${topic}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+  // ページネーション状態
+  const [currentPage, setCurrentPage] = useState(1);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  /** 各ページの先頭カーソルを記録 (前のページに戻るため) */
+  const [cursorHistory, setCursorHistory] = useState<(string | undefined)[]>([
+    undefined,
+  ]);
 
-      console.log(`[Discover Page] API response status: ${res.status}`);
+  const fetchArticles = useCallback(
+    async (topic: string, cursor?: string) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          topic,
+          limit: String(PAGE_SIZE),
+        });
+        if (cursor) params.set('cursor', cursor);
 
-      const data = await res.json();
-      console.log(`[Discover Page] API response data:`, {
-        blogsCount: data.blogs?.length || 0,
-        hasBlogs: !!data.blogs,
-        message: data.message,
-      });
+        const res = await fetch(`/api/discover?${params.toString()}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
 
-      if (!res.ok) {
-        console.error(`[Discover Page] API error: ${data.message}`);
-        throw new Error(data.message || 'Failed to fetch articles');
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.message || 'Failed to fetch articles');
+        }
+
+        const blogs: Discover[] = data.blogs || [];
+        setDiscover(blogs);
+        setNextCursor(data.nextCursor || null);
+      } catch (err: any) {
+        console.error('[Discover Page] Error fetching data:', err);
+        toast.error(`記事の取得に失敗しました: ${err.message || ''}`);
+        setDiscover([]);
+        setNextCursor(null);
+      } finally {
+        setLoading(false);
       }
+    },
+    [],
+  );
 
-      // サムネイルがない記事も表示（デフォルト画像が設定されている）
-      // data.blogs = data.blogs.filter((blog: Discover) => blog.thumbnail);
+  // トピック変更時: 1ページ目にリセット
+  useEffect(() => {
+    setCurrentPage(1);
+    setCursorHistory([undefined]);
+    setNextCursor(null);
+    fetchArticles(activeTopic);
+  }, [activeTopic, fetchArticles]);
 
-      const blogs = data.blogs || [];
-      console.log(`[Discover Page] Setting ${blogs.length} articles to state`);
-      setDiscover(blogs);
-      sessionStorage.setItem('discover_articles', JSON.stringify(blogs));
-    } catch (err: any) {
-      console.error('[Discover Page] Error fetching data:', err);
-      console.error('[Discover Page] Error details:', {
-        message: err.message,
-        stack: err.stack,
-      });
-      toast.error(`Error fetching data: ${err.message || 'Unknown error'}`);
-      setDiscover([]); // エラー時は空配列を設定
-    } finally {
-      setLoading(false);
-    }
+  /** 次のページへ */
+  const goToNextPage = () => {
+    if (!nextCursor) return;
+    const newPage = currentPage + 1;
+    setCursorHistory((prev) => {
+      const updated = [...prev];
+      // 新しいページのカーソルを記録
+      if (updated.length <= currentPage) {
+        updated.push(nextCursor);
+      } else {
+        updated[currentPage] = nextCursor;
+      }
+      return updated;
+    });
+    setCurrentPage(newPage);
+    fetchArticles(activeTopic, nextCursor);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    fetchArticles(activeTopic);
-  }, [activeTopic]);
+  /** 前のページへ */
+  const goToPrevPage = () => {
+    if (currentPage <= 1) return;
+    const newPage = currentPage - 1;
+    setCurrentPage(newPage);
+    const prevCursor = cursorHistory[newPage - 1]; // 0-indexed
+    fetchArticles(activeTopic, prevCursor);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <>
@@ -138,6 +173,7 @@ const Page = () => {
           </div>
         ) : (discover && discover.length > 0) ? (
           <div className="flex flex-col gap-4 pb-28 pt-5 lg:pb-8 w-full">
+            {/* モバイル表示 */}
             <div className="block lg:hidden">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {discover.map((item, i) => (
@@ -146,6 +182,7 @@ const Page = () => {
               </div>
             </div>
 
+            {/* デスクトップ表示 */}
             <div className="hidden lg:block">
               {(() => {
                   const sections = [];
@@ -264,14 +301,46 @@ const Page = () => {
                   return sections;
                 })()}
             </div>
+
+            {/* ページネーション */}
+            <div className="flex items-center justify-center gap-4 py-6 mb-16 lg:mb-0">
+              <button
+                onClick={goToPrevPage}
+                disabled={currentPage <= 1}
+                className={cn(
+                  'flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium transition duration-200',
+                  currentPage <= 1
+                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                    : 'text-black dark:text-white bg-light-secondary dark:bg-dark-secondary hover:bg-light-200 dark:hover:bg-dark-200 cursor-pointer active:scale-95',
+                )}
+              >
+                <ChevronLeft size={16} />
+                前のページ
+              </button>
+
+              <span className="text-sm font-medium text-black/70 dark:text-white/70 min-w-[4rem] text-center">
+                {currentPage} ページ
+              </span>
+
+              <button
+                onClick={goToNextPage}
+                disabled={!nextCursor}
+                className={cn(
+                  'flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium transition duration-200',
+                  !nextCursor
+                    ? 'text-gray-400 dark:text-gray-600 cursor-not-allowed'
+                    : 'text-black dark:text-white bg-light-secondary dark:bg-dark-secondary hover:bg-light-200 dark:hover:bg-dark-200 cursor-pointer active:scale-95',
+                )}
+              >
+                次のページ
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center min-h-screen py-20">
+          <div className="flex flex-col items-center justify-center min-h-[50vh] py-20">
             <p className="text-gray-500 dark:text-gray-400 text-lg">
               記事が見つかりませんでした
-            </p>
-            <p className="text-gray-400 dark:text-gray-500 text-sm mt-2">
-              ブラウザのコンソール（F12）でエラーを確認してください
             </p>
           </div>
         )}

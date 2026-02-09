@@ -359,7 +359,7 @@ export const ChatProvider = ({
   const [files, setFiles] = useState<File[]>([]);
   const [fileIds, setFileIds] = useState<string[]>([]);
 
-  const [focusMode, setFocusMode] = useState('prnewswire');
+  const [focusMode, setFocusMode] = useState('allCategories');
   const [optimizationMode, setOptimizationMode] = useState('speed');
 
   const [isMessagesLoaded, setIsMessagesLoaded] = useState(false);

@@ -1,9 +1,7 @@
 'use client';
 
-import { Settings } from 'lucide-react';
 import EmptyChatMessageInput from './EmptyChatMessageInput';
 import { File } from './ChatWindow';
-import Link from 'next/link';
 import Image from 'next/image';
 import WeatherWidget from './WeatherWidget';
 import NewsArticleWidget from './NewsArticleWidget';
@@ -13,11 +11,6 @@ const EmptyChat = () => {
   const { t } = useTranslation();
   return (
     <div className="relative">
-      <div className="absolute w-full flex flex-row items-center justify-end mr-5 mt-5">
-        <Link href="/settings">
-          <Settings className="cursor-pointer lg:hidden" />
-        </Link>
-      </div>
       <div className="flex flex-col items-center justify-center min-h-screen max-w-screen-md mx-auto p-3 space-y-5">
         <div className="flex flex-col items-center justify-center w-full space-y-8">
           <Image

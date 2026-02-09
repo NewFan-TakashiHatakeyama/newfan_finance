@@ -9,6 +9,7 @@ import { discoverListKey } from '@/lib/cache/cache-keys';
 import {
   getArticlesByTopic,
   getArticlesByTopics,
+  getArticlesByTopicPaginated,
   ArticleRecord,
 } from '@/lib/aws/article-service';
 
@@ -61,6 +62,12 @@ function extractThumbnail(html: string): string {
 // DynamoDB からの記事取得 (移行後のデータソース)
 // ===================================================================
 
+/** ページネーション付きレスポンスの型 */
+interface PaginatedDiscoverResponse {
+  articles: DiscoverArticle[];
+  nextCursor: string | null;
+}
+
 /**
  * DynamoDB から記事一覧を取得
  */
@@ -90,6 +97,37 @@ async function fetchArticlesFromDynamoDB(
     author: article.author,
     category: article.category,
   }));
+}
+
+/**
+ * DynamoDB からページネーション付きで記事一覧を取得
+ */
+async function fetchArticlesFromDynamoDBPaginated(
+  topic: string,
+  limit: number,
+  cursor?: string,
+): Promise<PaginatedDiscoverResponse> {
+  console.log(
+    `[DynamoDB] Fetching paginated articles: topic=${topic}, limit=${limit}, cursor=${cursor ? 'yes' : 'no'}`,
+  );
+
+  const result = await getArticlesByTopicPaginated(topic, limit, cursor);
+
+  console.log(
+    `[DynamoDB] Fetched ${result.articles.length} articles, hasMore=${!!result.nextCursor}`,
+  );
+
+  const articles = result.articles.map((article) => ({
+    title: article.title,
+    content: article.content,
+    url: article.url,
+    thumbnail: article.thumbnail || '',
+    pubDate: article.pubDate,
+    author: article.author,
+    category: article.category,
+  }));
+
+  return { articles, nextCursor: result.nextCursor };
 }
 
 // ===================================================================
@@ -306,7 +344,12 @@ export const GET = async (req: NextRequest) => {
   try {
     const { searchParams } = new URL(req.url);
     const topic = searchParams.get('topic') || 'finance';
-    console.log(`[API] Request topic: ${topic}`);
+    const cursor = searchParams.get('cursor') || undefined;
+    const limit = Math.min(
+      Math.max(parseInt(searchParams.get('limit') || '20', 10) || 20, 1),
+      100,
+    );
+    console.log(`[API] Request topic: ${topic}, limit: ${limit}, cursor: ${cursor ? 'yes' : 'no'}`);
 
     // トピックのバリデーション
     if (topic && !TOPICS.includes(topic)) {
@@ -316,27 +359,44 @@ export const GET = async (req: NextRequest) => {
       );
     }
 
-    // 記事を取得 (キャッシュ + データソース)
-    console.log(
-      `[API] Fetching articles for topic: ${topic}`,
-    );
+    // DynamoDB ページネーション (カーソルベース)
+    if (DATA_SOURCE === 'dynamodb') {
+      const result = await fetchArticlesFromDynamoDBPaginated(
+        topic,
+        limit,
+        cursor,
+      );
+
+      console.log(`[API] Returning ${result.articles.length} articles (hasMore=${!!result.nextCursor})`);
+      return Response.json(
+        {
+          blogs: result.articles,
+          nextCursor: result.nextCursor,
+        },
+        {
+          status: 200,
+          headers: {
+            'Cache-Control':
+              'public, s-maxage=300, stale-while-revalidate=600',
+          },
+        },
+      );
+    }
+
+    // S3 (レガシー: ページネーション非対応)
     const blogs = await fetchArticles(topic || undefined);
     console.log(`[API] Fetched ${blogs.length} articles`);
 
-    // トピックでフィルタリング（指定されている場合、かつ全トピックから取得した場合）
     let filteredBlogs = blogs;
     if (topic && topic !== 'all') {
       filteredBlogs = blogs.filter(
         (blog: DiscoverArticle) => blog.category === topic,
       );
-      console.log(
-        `[API] Filtered to ${filteredBlogs.length} articles for topic ${topic}`,
-      );
     }
 
     console.log(`[API] Returning ${filteredBlogs.length} articles`);
     return Response.json(
-      { blogs: filteredBlogs },
+      { blogs: filteredBlogs, nextCursor: null },
       {
         status: 200,
         headers: {

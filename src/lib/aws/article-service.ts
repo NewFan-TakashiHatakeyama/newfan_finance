@@ -20,6 +20,15 @@ export interface ArticleRecord {
 }
 
 /**
+ * ページネーション付きレスポンスの型定義
+ */
+export interface PaginatedArticles {
+  articles: ArticleRecord[];
+  /** 次ページのカーソル (Base64 エンコード済み)。null の場合は最終ページ */
+  nextCursor: string | null;
+}
+
+/**
  * トピック別に記事一覧を取得 (DynamoDB Query)
  *
  * GSI `category-pubDateEpoch-index` を使用し、
@@ -46,6 +55,56 @@ export async function getArticlesByTopic(
 
   const response = await dynamoClient.send(command);
   return (response.Items || []) as ArticleRecord[];
+}
+
+/**
+ * トピック別に記事一覧をページネーション付きで取得
+ *
+ * GSI `category-pubDateEpoch-index` を使用し、
+ * カーソルベースのページネーションで記事を返す。
+ *
+ * @param topic - カテゴリ名
+ * @param limit - 1ページあたりの件数 (デフォルト: 20)
+ * @param cursor - 前ページの nextCursor (Base64 エンコード済み)
+ * @returns ページネーション付き記事レスポンス
+ */
+export async function getArticlesByTopicPaginated(
+  topic: string,
+  limit: number = 20,
+  cursor?: string,
+): Promise<PaginatedArticles> {
+  const commandInput: Record<string, unknown> = {
+    TableName: TABLE_NAME,
+    IndexName: 'category-pubDateEpoch-index',
+    KeyConditionExpression: 'category = :cat',
+    ExpressionAttributeValues: {
+      ':cat': topic,
+    },
+    ScanIndexForward: false,
+    Limit: limit,
+  };
+
+  if (cursor) {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(cursor, 'base64').toString('utf-8'),
+      );
+      commandInput.ExclusiveStartKey = decoded;
+    } catch {
+      console.warn('[article-service] Invalid cursor, ignoring:', cursor);
+    }
+  }
+
+  const response = await dynamoClient.send(
+    new QueryCommand(commandInput as any),
+  );
+
+  const articles = (response.Items || []) as ArticleRecord[];
+  const nextCursor = response.LastEvaluatedKey
+    ? Buffer.from(JSON.stringify(response.LastEvaluatedKey)).toString('base64')
+    : null;
+
+  return { articles, nextCursor };
 }
 
 /**

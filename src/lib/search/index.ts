@@ -9,6 +9,11 @@ import S3VectorsSearchAgent from '@/lib/search/s3VectorsSearchAgent';
  * prnewswire モード (デフォルト) はカテゴリフィルタなしで全記事を検索。
  */
 export const searchHandlers: Record<string, MetaSearchAgentType> = {
+  allCategories: new S3VectorsSearchAgent({
+    topK: 10,
+    rerank: true,
+    rerankThreshold: 0.3,
+  }),
   finance: new S3VectorsSearchAgent({
     category: 'finance',
     topK: 10,
