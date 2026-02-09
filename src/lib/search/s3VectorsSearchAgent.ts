@@ -35,6 +35,7 @@ import {
 import { BaseMessage } from '@langchain/core/messages';
 import { StringOutputParser } from '@langchain/core/output_parsers';
 import LineOutputParser from '../outputParsers/lineOutputParser';
+import LineListOutputParser from '../outputParsers/listLineOutputParser';
 import { Document } from 'langchain/document';
 import { searchArticles, type SearchOptions } from '../aws/s3-vectors-search';
 import computeSimilarity from '../utils/computeSimilarity';
@@ -46,10 +47,7 @@ import type { MetaSearchAgentType } from './metaSearchAgent';
 // --- プロンプト定義 ---
 
 /**
- * PRNA 記事検索用クエリリフレーザー
- *
- * ユーザーの質問を、金融ニュース記事の検索に最適化された
- * 検索クエリにリフレーズする。
+ * PRNA 記事検索用クエリリフレーザー (単一クエリ: speed / balanced)
  */
 const queryGeneratorPrompt = `
 You are a financial news search query optimizer. You will be given a conversation and a follow-up question about financial news, markets, or business.
@@ -63,6 +61,30 @@ Rules:
 4. Preserve important financial terms, company names, and specific metrics.
 5. You can use either Japanese or English depending on the original query language.
 6. Return the query inside the \`question\` XML block.
+`;
+
+/**
+ * 高精度モード用マルチクエリジェネレーター
+ *
+ * ユーザーの質問を複数の異なる視点で検索クエリに分解し、
+ * 幅広い記事を網羅的に探索する。
+ */
+const multiQueryGeneratorPrompt = `
+You are a financial news deep research query optimizer. You will be given a conversation and a follow-up question about financial news, markets, or business.
+
+Your task is to generate **3 different search queries** that together comprehensively cover the user's question from multiple angles. These queries will be used for semantic search against a PR Newswire (PRNA) article database.
+
+Strategy:
+- Query 1: Direct rephrasing of the user's question (most specific)
+- Query 2: Broader context or related industry/market perspective
+- Query 3: Alternative phrasing using different terminology or language (Japanese ↔ English)
+
+Rules:
+1. If it is a simple greeting without a question, return \`not_needed\` in the first question block.
+2. Each query should be concise (under 50 words).
+3. Preserve important financial terms, company names, and specific metrics.
+4. Use both Japanese and English across the queries to maximize coverage.
+5. Return each query inside separate XML blocks: \`<question1>\`, \`<question2>\`, \`<question3>\`.
 `;
 
 /**
@@ -137,10 +159,45 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
   }
 
   /**
-   * クエリリフレーズ → S3 Vectors 検索チェーン
+   * 最適化モードに応じた検索パラメータを取得
    */
-  private async createSearchRetrieverChain(llm: BaseChatModel) {
+  private getSearchParams(optimizationMode: 'speed' | 'balanced' | 'quality') {
+    switch (optimizationMode) {
+      case 'speed':
+        return { topK: 5, maxDocs: 5 };
+      case 'balanced':
+        return { topK: 10, maxDocs: 10 };
+      case 'quality':
+        return { topK: 15, maxDocs: 15 };
+      default:
+        return { topK: 10, maxDocs: 10 };
+    }
+  }
+
+  /**
+   * S3 Vectors で検索を実行 (共通ヘルパー)
+   */
+  private async executeSearch(
+    query: string,
+    topK: number,
+  ): Promise<Document[]> {
+    const searchOptions: SearchOptions = {
+      topK,
+      ...(this.config.category ? { category: this.config.category } : {}),
+    };
+
+    return searchArticles(query, searchOptions);
+  }
+
+  /**
+   * 単一クエリ検索チェーン (speed / balanced)
+   */
+  private async createSearchRetrieverChain(
+    llm: BaseChatModel,
+    optimizationMode: 'speed' | 'balanced' | 'quality',
+  ) {
     (llm as unknown as ChatOpenAI).temperature = 0;
+    const { topK } = this.getSearchParams(optimizationMode);
 
     return RunnableSequence.from([
       ChatPromptTemplate.fromMessages([
@@ -171,25 +228,100 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
           return { query: '', docs: [] };
         }
 
-        // think タグを除去
         question = question.replace(/<think>.*?<\/think>/g, '');
 
-        // S3 Vectors でセマンティック検索
-        const searchOptions: SearchOptions = {
-          topK: this.config.topK,
-          ...(this.config.category ? { category: this.config.category } : {}),
-        };
-
-        console.log(`[S3VectorsAgent] 検索実行: query="${question.slice(0, 80)}", category=${this.config.category || '(all)'}, topK=${this.config.topK}`);
+        console.log(`[S3VectorsAgent] [${optimizationMode}] 検索: query="${question.slice(0, 80)}", topK=${topK}`);
 
         try {
-          const documents = await searchArticles(question, searchOptions);
-          console.log(`[S3VectorsAgent] 検索結果: ${documents.length} 件の Document を取得`);
+          const documents = await this.executeSearch(question, topK);
+          console.log(`[S3VectorsAgent] [${optimizationMode}] 結果: ${documents.length} 件`);
           return { query: question, docs: documents };
         } catch (error) {
           console.error('[S3VectorsAgent] Search failed:', error);
           return { query: question, docs: [] };
         }
+      }),
+    ]);
+  }
+
+  /**
+   * マルチクエリ検索チェーン (quality モード)
+   *
+   * LLM が3つの異なる視点でクエリを生成し、
+   * それぞれ S3 Vectors で検索して結果をマージ・重複排除する。
+   */
+  private async createMultiQuerySearchChain(
+    llm: BaseChatModel,
+  ) {
+    (llm as unknown as ChatOpenAI).temperature = 0;
+    const { topK } = this.getSearchParams('quality');
+
+    return RunnableSequence.from([
+      ChatPromptTemplate.fromMessages([
+        ['system', multiQueryGeneratorPrompt],
+        [
+          'user',
+          `
+          <conversation>
+          {chat_history}
+          </conversation>
+
+          <query>
+          {query}
+          </query>
+          `,
+        ],
+      ]),
+      llm,
+      this.strParser,
+      RunnableLambda.from(async (input: string) => {
+        const cleaned = input.replace(/<think>.*?<\/think>/g, '');
+
+        // 3つのクエリを抽出
+        const q1Parser = new LineOutputParser({ key: 'question1' });
+        const q2Parser = new LineOutputParser({ key: 'question2' });
+        const q3Parser = new LineOutputParser({ key: 'question3' });
+
+        const q1 = (await q1Parser.parse(cleaned)) ?? '';
+        const q2 = (await q2Parser.parse(cleaned)) ?? '';
+        const q3 = (await q3Parser.parse(cleaned)) ?? '';
+
+        // 単一クエリフォールバック
+        if (q1 === 'not_needed') {
+          return { query: '', docs: [] };
+        }
+
+        const queries = [q1, q2, q3].filter((q) => q && q.length > 0);
+        console.log(`[S3VectorsAgent] [quality] マルチクエリ生成: ${queries.length} 件`);
+        queries.forEach((q, i) => console.log(`  Q${i + 1}: "${q.slice(0, 80)}"`));
+
+        // 並行検索
+        const searchResults = await Promise.all(
+          queries.map((q) =>
+            this.executeSearch(q, topK).catch((err) => {
+              console.error(`[S3VectorsAgent] Query failed: "${q.slice(0, 40)}"`, err);
+              return [] as Document[];
+            }),
+          ),
+        );
+
+        // マージ + 重複排除 (article_id ベース)
+        const seen = new Set<string>();
+        const mergedDocs: Document[] = [];
+
+        for (const docs of searchResults) {
+          for (const doc of docs) {
+            const id = doc.metadata.article_id || doc.metadata.url;
+            if (!seen.has(id)) {
+              seen.add(id);
+              mergedDocs.push(doc);
+            }
+          }
+        }
+
+        console.log(`[S3VectorsAgent] [quality] マージ結果: ${mergedDocs.length} 件 (重複排除済)`);
+
+        return { query: q1, docs: mergedDocs };
       }),
     ]);
   }
@@ -215,8 +347,11 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
             input.chat_history,
           );
 
+          // 最適化モードに応じた検索チェーンを選択
           const searchRetrieverChain =
-            await this.createSearchRetrieverChain(llm);
+            optimizationMode === 'quality'
+              ? await this.createMultiQuerySearchChain(llm)
+              : await this.createSearchRetrieverChain(llm, optimizationMode);
 
           const searchRetrieverResult = await searchRetrieverChain.invoke({
             chat_history: processedHistory,
@@ -225,18 +360,18 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
 
           const query = searchRetrieverResult.query;
           const docs = searchRetrieverResult.docs as Document[];
+          const { maxDocs } = this.getSearchParams(optimizationMode);
 
           if (docs.length === 0) {
             return docs;
           }
 
-          // S3 Vectors は既にセマンティック距離で並んでいるため、
-          // speed モードではリランキング不要
-          if (optimizationMode === 'speed' || !this.config.rerank) {
-            return docs.slice(0, 15);
+          // speed: S3 Vectors の距離順をそのまま使用 (リランキング不要)
+          if (optimizationMode === 'speed') {
+            return docs.slice(0, maxDocs);
           }
 
-          // balanced / quality モードでは LangChain Embeddings でリランキング
+          // balanced / quality: LangChain Embeddings でリランキング
           const docsWithContent = docs.filter(
             (doc) => doc.pageContent && doc.pageContent.length > 0,
           );
@@ -253,14 +388,19 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
             return { index: i, similarity: sim };
           });
 
+          // quality モードではより厳密な閾値を適用
+          const threshold =
+            optimizationMode === 'quality'
+              ? Math.max(this.config.rerankThreshold ?? 0.3, 0.2)
+              : this.config.rerankThreshold ?? 0.3;
+
           const sortedDocs = similarity
-            .filter(
-              (sim) =>
-                sim.similarity > (this.config.rerankThreshold ?? 0.3),
-            )
+            .filter((sim) => sim.similarity > threshold)
             .sort((a, b) => b.similarity - a.similarity)
-            .slice(0, 15)
+            .slice(0, maxDocs)
             .map((sim) => docsWithContent[sim.index]);
+
+          console.log(`[S3VectorsAgent] [${optimizationMode}] リランキング後: ${sortedDocs.length} 件 (閾値=${threshold})`);
 
           return sortedDocs;
         })

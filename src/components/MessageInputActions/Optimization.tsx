@@ -12,20 +12,20 @@ import { useChat } from '@/lib/hooks/useChat';
 const OptimizationModes = [
   {
     key: 'speed',
-    title: 'Speed',
-    description: 'Prioritize speed and get the quickest possible answer.',
+    title: '高速',
+    description: '最速で回答を取得します。少数の関連記事から即座に応答します。',
     icon: <Zap size={20} className="text-[#FF9800]" />,
   },
   {
     key: 'balanced',
-    title: 'Balanced',
-    description: 'Find the right balance between speed and accuracy',
+    title: 'バランス',
+    description: '速度と精度のバランスを取り、リランキングで関連性を向上させます。',
     icon: <Sliders size={20} className="text-[#4CAF50]" />,
   },
   {
     key: 'quality',
-    title: 'Quality (Soon)',
-    description: 'Get the most thorough and accurate answer',
+    title: '高精度',
+    description: '複数の検索クエリで幅広く記事を探索し、最も正確な回答を生成します。',
     icon: (
       <Star
         size={16}
@@ -73,13 +73,11 @@ const Optimization = () => {
               <PopoverButton
                 onClick={() => setOptimizationMode(mode.key)}
                 key={i}
-                disabled={mode.key === 'quality'}
                 className={cn(
                   'p-2 rounded-lg flex flex-col items-start justify-start text-start space-y-1 duration-200 cursor-pointer transition',
                   optimizationMode === mode.key
                     ? 'bg-light-secondary dark:bg-dark-secondary'
                     : 'hover:bg-light-secondary dark:hover:bg-dark-secondary',
-                  mode.key === 'quality' && 'opacity-50 cursor-not-allowed',
                 )}
               >
                 <div className="flex flex-row items-center space-x-1 text-black dark:text-white">
