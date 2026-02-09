@@ -435,36 +435,50 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
 
   /**
    * ストリーミングイベントを処理
+   *
+   * try/catch で囲み、エラー発生時は emitter に 'error' イベントを発行する。
+   * これにより Unhandled Rejection によるプロセスクラッシュを防止する。
    */
   private async handleStream(
     stream: AsyncGenerator<StreamEvent, any, any>,
     emitter: eventEmitter,
   ) {
-    for await (const event of stream) {
-      if (
-        event.event === 'on_chain_end' &&
-        event.name === 'FinalSourceRetriever'
-      ) {
-        emitter.emit(
-          'data',
-          JSON.stringify({ type: 'sources', data: event.data.output }),
-        );
+    try {
+      for await (const event of stream) {
+        if (
+          event.event === 'on_chain_end' &&
+          event.name === 'FinalSourceRetriever'
+        ) {
+          emitter.emit(
+            'data',
+            JSON.stringify({ type: 'sources', data: event.data.output }),
+          );
+        }
+        if (
+          event.event === 'on_chain_stream' &&
+          event.name === 'FinalResponseGenerator'
+        ) {
+          emitter.emit(
+            'data',
+            JSON.stringify({ type: 'response', data: event.data.chunk }),
+          );
+        }
+        if (
+          event.event === 'on_chain_end' &&
+          event.name === 'FinalResponseGenerator'
+        ) {
+          emitter.emit('end');
+        }
       }
-      if (
-        event.event === 'on_chain_stream' &&
-        event.name === 'FinalResponseGenerator'
-      ) {
-        emitter.emit(
-          'data',
-          JSON.stringify({ type: 'response', data: event.data.chunk }),
-        );
-      }
-      if (
-        event.event === 'on_chain_end' &&
-        event.name === 'FinalResponseGenerator'
-      ) {
-        emitter.emit('end');
-      }
+    } catch (error) {
+      console.error('[S3VectorsAgent] ストリーミング中にエラー発生:', error);
+      emitter.emit(
+        'error',
+        JSON.stringify({
+          type: 'error',
+          data: '検索処理中にエラーが発生しました。しばらくしてから再度お試しください。',
+        }),
+      );
     }
   }
 
@@ -500,7 +514,16 @@ class S3VectorsSearchAgent implements MetaSearchAgentType {
       },
     );
 
-    this.handleStream(stream, emitter);
+    this.handleStream(stream, emitter).catch((error) => {
+      console.error('[S3VectorsAgent] handleStream 未処理エラー:', error);
+      emitter.emit(
+        'error',
+        JSON.stringify({
+          type: 'error',
+          data: '検索処理中に予期しないエラーが発生しました。',
+        }),
+      );
+    });
 
     return emitter;
   }

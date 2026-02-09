@@ -1,10 +1,13 @@
-import DOMPurify from 'isomorphic-dompurify';
+import sanitize from 'sanitize-html';
 
 /**
  * 外部コンテンツの HTML をサニタイズする
  *
  * XSS 攻撃を防止しつつ、記事コンテンツの表示に必要な
  * 安全な HTML タグ・属性のみを許可する。
+ *
+ * sanitize-html は純粋な JS 実装のため、
+ * Node.js (SSR) / ブラウザ / Vercel Serverless のいずれでも動作する。
  *
  * 許可するタグ:
  *   - テキスト: p, br, strong, em, b, i, u, s, sub, sup, span
@@ -23,8 +26,8 @@ import DOMPurify from 'isomorphic-dompurify';
 export function sanitizeArticleHtml(dirtyHtml: string): string {
   if (!dirtyHtml) return '';
 
-  const clean = DOMPurify.sanitize(dirtyHtml, {
-    ALLOWED_TAGS: [
+  return sanitize(dirtyHtml, {
+    allowedTags: [
       // テキスト
       'p',
       'br',
@@ -74,44 +77,31 @@ export function sanitizeArticleHtml(dirtyHtml: string): string {
       'code',
       'hr',
     ],
-    ALLOWED_ATTR: [
-      // 共通
-      'class',
-      'id',
-      'style',
+    allowedAttributes: {
+      // 共通 (全タグ)
+      '*': ['class', 'id', 'style'],
       // リンク
-      'href',
-      'target',
-      'rel',
-      'title',
+      a: ['href', 'target', 'rel', 'title'],
       // 画像
-      'src',
-      'alt',
-      'width',
-      'height',
-      'loading',
+      img: ['src', 'alt', 'width', 'height', 'loading'],
       // テーブル
-      'colspan',
-      'rowspan',
-      'scope',
-    ],
-    // リンクを新しいタブで開く設定を強制
-    ADD_ATTR: ['target'],
-    // JavaScript URL を禁止 (javascript:, data: URI からのスクリプト実行)
-    ALLOW_DATA_ATTR: false,
-    // <a> タグに rel="noopener noreferrer" を自動付与するフック
-    RETURN_DOM: false,
-    RETURN_DOM_FRAGMENT: false,
+      th: ['colspan', 'rowspan', 'scope'],
+      td: ['colspan', 'rowspan'],
+    },
+    // JavaScript URL を禁止
+    allowedSchemes: ['http', 'https', 'mailto'],
+    // <a> タグに安全属性を強制付与
+    transformTags: {
+      a: (tagName: string, attribs: sanitize.Attributes) => {
+        return {
+          tagName,
+          attribs: {
+            ...attribs,
+            target: '_blank',
+            rel: 'noopener noreferrer',
+          },
+        };
+      },
+    },
   });
-
-  // サニタイズ後に <a> タグに安全属性を付与
-  return clean
-    .replace(
-      /<a\s/g,
-      '<a target="_blank" rel="noopener noreferrer" ',
-    )
-    .replace(
-      /target="_blank"\s*target="_blank"/g,
-      'target="_blank"',
-    );
 }

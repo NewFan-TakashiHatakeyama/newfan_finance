@@ -39,6 +39,9 @@ const EMBEDDING_DIMENSION = 3072;
 
 // --- S3 Vectors クライアント (シングルトン) ---
 
+/** AWS SDK リクエストタイムアウト (ミリ秒) */
+const AWS_REQUEST_TIMEOUT_MS = 15_000;
+
 const getS3VectorsClient = (() => {
   let client: S3VectorsClient | null = null;
   return () => {
@@ -46,7 +49,14 @@ const getS3VectorsClient = (() => {
       const config: {
         region: string;
         credentials?: { accessKeyId: string; secretAccessKey: string };
-      } = { region: REGION };
+        requestHandler?: { requestTimeout?: number; connectionTimeout?: number };
+      } = {
+        region: REGION,
+        requestHandler: {
+          requestTimeout: AWS_REQUEST_TIMEOUT_MS,
+          connectionTimeout: 5_000,
+        },
+      };
 
       if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
         config.credentials = {
@@ -109,15 +119,32 @@ export async function generateQueryEmbedding(
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${EMBEDDING_API_KEY}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'models/gemini-embedding-001',
-      content: { parts: [{ text }] },
-      outputDimensionality: EMBEDDING_DIMENSION,
-    }),
-  });
+  // 10 秒タイムアウト
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10_000);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'models/gemini-embedding-001',
+        content: { parts: [{ text }] },
+        outputDimensionality: EMBEDDING_DIMENSION,
+      }),
+      signal: controller.signal,
+    });
+  } catch (error: unknown) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error('[S3VectorsSearch] Embedding API タイムアウト (10s)');
+      throw new Error('Gemini Embedding API request timed out after 10 seconds');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -179,28 +206,33 @@ export async function queryVectors(
 
   console.log(`[S3VectorsSearch] QueryVectors: bucket=${VECTOR_BUCKET}, index=${VECTOR_INDEX}, topK=${topK}, category=${category || '(all)'}`);
 
-  const response = await client.send(
-    new QueryVectorsCommand(commandInput),
-  );
+  try {
+    const response = await client.send(
+      new QueryVectorsCommand(commandInput),
+    );
 
-  const results = (response.vectors || []).map((v) => ({
-    key: v.key!,
-    distance: v.distance ?? 1,
-    metadata: {
-      article_id: (v.metadata as Record<string, string>)?.article_id || v.key!,
-      title: (v.metadata as Record<string, string>)?.title || '',
-      url: (v.metadata as Record<string, string>)?.url || '',
-      category: (v.metadata as Record<string, string>)?.category || '',
-      pub_date: (v.metadata as Record<string, string>)?.pub_date || '',
-    },
-  }));
+    const results = (response.vectors || []).map((v) => ({
+      key: v.key!,
+      distance: v.distance ?? 1,
+      metadata: {
+        article_id: (v.metadata as Record<string, string>)?.article_id || v.key!,
+        title: (v.metadata as Record<string, string>)?.title || '',
+        url: (v.metadata as Record<string, string>)?.url || '',
+        category: (v.metadata as Record<string, string>)?.category || '',
+        pub_date: (v.metadata as Record<string, string>)?.pub_date || '',
+      },
+    }));
 
-  console.log(`[S3VectorsSearch] QueryVectors 結果: ${results.length} 件`);
-  if (results.length > 0) {
-    console.log(`[S3VectorsSearch] Top 3:`, results.slice(0, 3).map((r) => `${r.metadata.title.slice(0, 50)} (dist=${r.distance.toFixed(4)}, cat=${r.metadata.category})`));
+    console.log(`[S3VectorsSearch] QueryVectors 結果: ${results.length} 件`);
+    if (results.length > 0) {
+      console.log(`[S3VectorsSearch] Top 3:`, results.slice(0, 3).map((r) => `${r.metadata.title.slice(0, 50)} (dist=${r.distance.toFixed(4)}, cat=${r.metadata.category})`));
+    }
+
+    return results;
+  } catch (error) {
+    console.error('[S3VectorsSearch] QueryVectors エラー:', error);
+    throw new Error(`S3 Vectors search failed: ${error instanceof Error ? error.message : String(error)}`);
   }
-
-  return results;
 }
 
 // --- DynamoDB 記事全文取得 ---
@@ -226,22 +258,27 @@ async function batchGetArticles(
   for (let i = 0; i < urlHashes.length; i += BATCH_SIZE) {
     const batch = urlHashes.slice(i, i + BATCH_SIZE);
 
-    const response = await dynamoClient.send(
-      new BatchGetCommand({
-        RequestItems: {
-          [TABLE_NAME]: {
-            Keys: batch.map((hash) => ({ url_hash: hash })),
-            ProjectionExpression:
-              'url_hash, title, #u, content, category, pubDate, author, thumbnail',
-            ExpressionAttributeNames: { '#u': 'url' },
+    try {
+      const response = await dynamoClient.send(
+        new BatchGetCommand({
+          RequestItems: {
+            [TABLE_NAME]: {
+              Keys: batch.map((hash) => ({ url_hash: hash })),
+              ProjectionExpression:
+                'url_hash, title, #u, content, category, pubDate, author, thumbnail',
+              ExpressionAttributeNames: { '#u': 'url' },
+            },
           },
-        },
-      }),
-    );
+        }),
+      );
 
-    const items = response.Responses?.[TABLE_NAME] || [];
-    for (const item of items) {
-      result.set(item.url_hash as string, item);
+      const items = response.Responses?.[TABLE_NAME] || [];
+      for (const item of items) {
+        result.set(item.url_hash as string, item);
+      }
+    } catch (error) {
+      console.error(`[S3VectorsSearch] DynamoDB BatchGetItem エラー (batch ${i / BATCH_SIZE + 1}):`, error);
+      // エラーが発生しても取得済みの結果は返す
     }
   }
 
