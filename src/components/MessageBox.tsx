@@ -21,7 +21,6 @@ import { useSpeech } from 'react-text-to-speech';
 import ThinkBox from './ThinkBox';
 import { useChat, Section } from '@/lib/hooks/useChat';
 import Citation from './Citation';
-import RagAds from './RagAds';
 
 const ThinkTagProcessor = ({
   children,
@@ -154,8 +153,6 @@ const MessageBox = ({
                     </div>
                   </div>
                 )}
-
-                {isLast && !loading && <RagAds />}
 
                 {isLast &&
                   section.suggestions &&
