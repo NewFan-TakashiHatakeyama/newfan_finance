@@ -1,0 +1,366 @@
+/**
+ * S3 Vectors 検索エージェント
+ *
+ * MetaSearchAgent を拡張し、SearxNG の代わりに
+ * S3 Vectors (PRNA 記事セマンティック検索) を使用する。
+ *
+ * フロー:
+ *   1. LLM でユーザークエリをリフレーズ (MetaSearchAgent と同じ)
+ *   2. S3 Vectors でセマンティック検索 (SearxNG の代替)
+ *   3. ドキュメントリランキング
+ *   4. LLM で応答生成 (citations 付き)
+ *
+ * フォーカスモードとカテゴリのマッピング:
+ *   - finance → finance カテゴリ
+ *   - market → market カテゴリ
+ *   - capital → capital カテゴリ
+ *   - real_estate → real_estate カテゴリ
+ *   - special → special カテゴリ
+ *   - prnewswire → prnewswire カテゴリ
+ */
+
+import { ChatOpenAI } from '@langchain/openai';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { Embeddings } from '@langchain/core/embeddings';
+import {
+  ChatPromptTemplate,
+  MessagesPlaceholder,
+  PromptTemplate,
+} from '@langchain/core/prompts';
+import {
+  RunnableLambda,
+  RunnableMap,
+  RunnableSequence,
+} from '@langchain/core/runnables';
+import { BaseMessage } from '@langchain/core/messages';
+import { StringOutputParser } from '@langchain/core/output_parsers';
+import LineOutputParser from '../outputParsers/lineOutputParser';
+import { Document } from 'langchain/document';
+import { searchArticles, type SearchOptions } from '../aws/s3-vectors-search';
+import computeSimilarity from '../utils/computeSimilarity';
+import formatChatHistoryAsString from '../utils/formatHistory';
+import eventEmitter from 'events';
+import { StreamEvent } from '@langchain/core/tracers/log_stream';
+import type { MetaSearchAgentType } from './metaSearchAgent';
+
+// --- プロンプト定義 ---
+
+/**
+ * PRNA 記事検索用クエリリフレーザー
+ *
+ * ユーザーの質問を、金融ニュース記事の検索に最適化された
+ * 検索クエリにリフレーズする。
+ */
+const queryGeneratorPrompt = `
+You are a financial news search query optimizer. You will be given a conversation and a follow-up question about financial news, markets, or business.
+
+Your task is to rephrase the follow-up question into an optimized search query for a financial news article database (PR Newswire / PRNA articles).
+
+Rules:
+1. If it is a simple greeting (Hi, Hello, How are you) without a question, return \`not_needed\`.
+2. Rephrase the question to be a standalone search query optimized for semantic search.
+3. Keep the query concise (under 50 words) and focused on the key financial concepts.
+4. Preserve important financial terms, company names, and specific metrics.
+5. You can use either Japanese or English depending on the original query language.
+6. Return the query inside the \`question\` XML block.
+`;
+
+/**
+ * PRNA 記事検索用レスポンスプロンプト
+ *
+ * 日本語で応答し、PRNA 記事の内容を引用して
+ * 詳細かつ正確な回答を生成する。
+ */
+const responsePrompt = `
+You are NewFan Finance AI, a financial news analysis assistant specialized in PR Newswire (PRNA) articles. You provide accurate, well-sourced answers based on the financial news articles in your database.
+
+**IMPORTANT**: Your response **MUST** be in Japanese.
+
+Your task is to provide answers that are:
+- **Informative and relevant**: Thoroughly address the user's query using the PRNA article context provided.
+- **Well-structured**: Include clear headings and subheadings, and use a professional tone.
+- **Cited and credible**: Use inline citations with [number] notation to refer to the source articles.
+- **Financial expertise**: Demonstrate understanding of financial terminology and market dynamics.
+
+### Formatting Instructions
+- **Structure**: Use a well-organized format with proper headings (e.g., "## Example heading").
+- **Tone and Style**: Maintain a professional financial journalism tone.
+- **Markdown Usage**: Format with Markdown for clarity.
+- **No main heading/title**: Start directly with the introduction.
+
+### Citation Requirements
+- Cite every fact using [number] notation corresponding to the source article.
+- Include the article title and publication date when first citing a source.
+- Use multiple sources for a single detail if applicable.
+
+### Special Instructions
+- If the context contains articles in English, translate key points into Japanese in your response.
+- If no relevant articles are found, say: "申し訳ございませんが、ご質問に関連する記事が見つかりませんでした。別の質問をお試しください。"
+- Highlight market trends, key figures, and actionable insights where applicable.
+
+### User instructions
+{systemInstructions}
+
+<context>
+{context}
+</context>
+
+Current date & time in ISO format (UTC timezone) is: {date}.
+`;
+
+// --- エージェント設定 ---
+
+interface S3VectorsSearchConfig {
+  /** S3 Vectors の category フィルタ (省略時はフィルタなし = 全カテゴリ検索) */
+  category?: string;
+  /** 検索結果の上限 */
+  topK: number;
+  /** リランキングの有効/無効 */
+  rerank: boolean;
+  /** リランキング閾値 */
+  rerankThreshold: number;
+}
+
+type BasicChainInput = {
+  chat_history: BaseMessage[];
+  query: string;
+};
+
+// --- S3 Vectors 検索エージェント ---
+
+class S3VectorsSearchAgent implements MetaSearchAgentType {
+  private config: S3VectorsSearchConfig;
+  private strParser = new StringOutputParser();
+
+  constructor(config: S3VectorsSearchConfig) {
+    this.config = config;
+  }
+
+  /**
+   * クエリリフレーズ → S3 Vectors 検索チェーン
+   */
+  private async createSearchRetrieverChain(llm: BaseChatModel) {
+    (llm as unknown as ChatOpenAI).temperature = 0;
+
+    return RunnableSequence.from([
+      ChatPromptTemplate.fromMessages([
+        ['system', queryGeneratorPrompt],
+        [
+          'user',
+          `
+          <conversation>
+          {chat_history}
+          </conversation>
+
+          <query>
+          {query}
+          </query>
+          `,
+        ],
+      ]),
+      llm,
+      this.strParser,
+      RunnableLambda.from(async (input: string) => {
+        const questionOutputParser = new LineOutputParser({
+          key: 'question',
+        });
+
+        let question = (await questionOutputParser.parse(input)) ?? input;
+
+        if (question === 'not_needed') {
+          return { query: '', docs: [] };
+        }
+
+        // think タグを除去
+        question = question.replace(/<think>.*?<\/think>/g, '');
+
+        // S3 Vectors でセマンティック検索
+        const searchOptions: SearchOptions = {
+          topK: this.config.topK,
+          ...(this.config.category && { category: this.config.category }),
+        };
+
+        try {
+          const documents = await searchArticles(question, searchOptions);
+          return { query: question, docs: documents };
+        } catch (error) {
+          console.error('[S3VectorsSearch] Search failed:', error);
+          return { query: question, docs: [] };
+        }
+      }),
+    ]);
+  }
+
+  /**
+   * 応答生成チェーン
+   */
+  private async createAnsweringChain(
+    llm: BaseChatModel,
+    fileIds: string[],
+    embeddings: Embeddings,
+    optimizationMode: 'speed' | 'balanced' | 'quality',
+    systemInstructions: string,
+  ) {
+    return RunnableSequence.from([
+      RunnableMap.from({
+        systemInstructions: () => systemInstructions,
+        query: (input: BasicChainInput) => input.query,
+        chat_history: (input: BasicChainInput) => input.chat_history,
+        date: () => new Date().toISOString(),
+        context: RunnableLambda.from(async (input: BasicChainInput) => {
+          const processedHistory = formatChatHistoryAsString(
+            input.chat_history,
+          );
+
+          const searchRetrieverChain =
+            await this.createSearchRetrieverChain(llm);
+
+          const searchRetrieverResult = await searchRetrieverChain.invoke({
+            chat_history: processedHistory,
+            query: input.query,
+          });
+
+          const query = searchRetrieverResult.query;
+          const docs = searchRetrieverResult.docs as Document[];
+
+          if (docs.length === 0) {
+            return docs;
+          }
+
+          // S3 Vectors は既にセマンティック距離で並んでいるため、
+          // speed モードではリランキング不要
+          if (optimizationMode === 'speed' || !this.config.rerank) {
+            return docs.slice(0, 15);
+          }
+
+          // balanced / quality モードでは LangChain Embeddings でリランキング
+          const docsWithContent = docs.filter(
+            (doc) => doc.pageContent && doc.pageContent.length > 0,
+          );
+
+          const [docEmbeddings, queryEmbedding] = await Promise.all([
+            embeddings.embedDocuments(
+              docsWithContent.map((doc) => doc.pageContent),
+            ),
+            embeddings.embedQuery(query),
+          ]);
+
+          const similarity = docEmbeddings.map((docEmbedding, i) => {
+            const sim = computeSimilarity(queryEmbedding, docEmbedding);
+            return { index: i, similarity: sim };
+          });
+
+          const sortedDocs = similarity
+            .filter(
+              (sim) =>
+                sim.similarity > (this.config.rerankThreshold ?? 0.3),
+            )
+            .sort((a, b) => b.similarity - a.similarity)
+            .slice(0, 15)
+            .map((sim) => docsWithContent[sim.index]);
+
+          return sortedDocs;
+        })
+          .withConfig({
+            runName: 'FinalSourceRetriever',
+          })
+          .pipe(this.processDocs),
+      }),
+      ChatPromptTemplate.fromMessages([
+        ['system', responsePrompt],
+        new MessagesPlaceholder('chat_history'),
+        ['user', '{query}'],
+      ]),
+      llm,
+      this.strParser,
+    ]).withConfig({
+      runName: 'FinalResponseGenerator',
+    });
+  }
+
+  /**
+   * ドキュメントをコンテキスト文字列に変換
+   */
+  private processDocs(docs: Document[]) {
+    return docs
+      .map(
+        (_, index) =>
+          `${index + 1}. ${docs[index].metadata.title} (${docs[index].metadata.pub_date || ''}) ${docs[index].pageContent}`,
+      )
+      .join('\n');
+  }
+
+  /**
+   * ストリーミングイベントを処理
+   */
+  private async handleStream(
+    stream: AsyncGenerator<StreamEvent, any, any>,
+    emitter: eventEmitter,
+  ) {
+    for await (const event of stream) {
+      if (
+        event.event === 'on_chain_end' &&
+        event.name === 'FinalSourceRetriever'
+      ) {
+        emitter.emit(
+          'data',
+          JSON.stringify({ type: 'sources', data: event.data.output }),
+        );
+      }
+      if (
+        event.event === 'on_chain_stream' &&
+        event.name === 'FinalResponseGenerator'
+      ) {
+        emitter.emit(
+          'data',
+          JSON.stringify({ type: 'response', data: event.data.chunk }),
+        );
+      }
+      if (
+        event.event === 'on_chain_end' &&
+        event.name === 'FinalResponseGenerator'
+      ) {
+        emitter.emit('end');
+      }
+    }
+  }
+
+  /**
+   * メイン処理: 検索 + 応答生成 (ストリーミング)
+   */
+  async searchAndAnswer(
+    message: string,
+    history: BaseMessage[],
+    llm: BaseChatModel,
+    embeddings: Embeddings,
+    optimizationMode: 'speed' | 'balanced' | 'quality',
+    fileIds: string[],
+    systemInstructions: string,
+  ) {
+    const emitter = new eventEmitter();
+
+    const answeringChain = await this.createAnsweringChain(
+      llm,
+      fileIds,
+      embeddings,
+      optimizationMode,
+      systemInstructions,
+    );
+
+    const stream = answeringChain.streamEvents(
+      {
+        chat_history: history,
+        query: message,
+      },
+      {
+        version: 'v1',
+      },
+    );
+
+    this.handleStream(stream, emitter);
+
+    return emitter;
+  }
+}
+
+export default S3VectorsSearchAgent;

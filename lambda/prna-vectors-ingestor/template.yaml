@@ -1,0 +1,98 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  prna-vectors-ingestor
+  DynamoDB Streams から記事を受信し、Embedding 化して S3 Vectors に格納する Lambda 関数。
+  S3 バケットには重複記事が存在するため、DynamoDB (重複排除済み) を起点とする。
+
+Parameters:
+  EmbeddingApiKey:
+    Type: String
+    Description: Gemini API Key for embedding generation
+    NoEcho: true
+  DynamoDBStreamArn:
+    Type: String
+    Description: ARN of the DynamoDB Streams for prna-articles table
+
+Globals:
+  Function:
+    Timeout: 120
+    MemorySize: 512
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64
+
+Resources:
+  PrnaVectorsIngestorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: prna-vectors-ingestor
+      Handler: dist/index.handler
+      CodeUri: .
+      Description: DynamoDB Streams → Embedding → S3 Vectors 投入
+      Role: arn:aws:iam::654654601240:role/prna-vectors-ingestor-role
+      Environment:
+        Variables:
+          S3_VECTORS_BUCKET: newfan-finance-vectors
+          S3_VECTORS_INDEX: prna-articles
+          EMBEDDING_PROVIDER: gemini
+          EMBEDDING_API_KEY: !Ref EmbeddingApiKey
+          EMBEDDING_DIMENSION: '3072'
+          AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
+      Events:
+        DynamoDBStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !Ref DynamoDBStreamArn
+            StartingPosition: TRIM_HORIZON
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 30
+            MaximumRetryAttempts: 3
+            BisectBatchOnFunctionError: true
+            FilterCriteria:
+              Filters:
+                - Pattern: '{"eventName":["INSERT","MODIFY"]}'
+
+  # CloudWatch アラーム: Lambda エラー監視
+  IngestorErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: prna-vectors-ingestor-errors
+      AlarmDescription: prna-vectors-ingestor Lambda errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PrnaVectorsIngestorFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  # CloudWatch アラーム: 実行時間監視
+  IngestorDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: prna-vectors-ingestor-duration
+      AlarmDescription: prna-vectors-ingestor Lambda duration exceeds 100s
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref PrnaVectorsIngestorFunction
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 100000
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  FunctionArn:
+    Description: Lambda function ARN
+    Value: !GetAtt PrnaVectorsIngestorFunction.Arn
+  FunctionName:
+    Description: Lambda function name
+    Value: !Ref PrnaVectorsIngestorFunction

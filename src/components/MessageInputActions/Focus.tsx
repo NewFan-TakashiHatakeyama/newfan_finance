@@ -98,7 +98,7 @@ const Focus = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 bg-light-primary dark:bg-dark-primary border rounded-lg border-light-200 dark:border-dark-200 w-full p-4 max-h-[200px] md:max-h-none overflow-y-auto">
             {focusModes.map((mode, i) => (
               <PopoverButton
-                onClick={() => setFocusMode('webSearch')}
+                onClick={() => setFocusMode(mode.key)}
                 key={i}
                 className={cn(
                   'p-2 rounded-lg flex flex-col items-start justify-start text-start space-y-2 duration-200 cursor-pointer transition',

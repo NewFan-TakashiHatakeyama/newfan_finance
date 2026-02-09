@@ -1,0 +1,25 @@
+{
+  "name": "prna-vectors-ingestor",
+  "version": "1.0.0",
+  "description": "DynamoDB Streams から記事を受信し Embedding 化して S3 Vectors に格納する Lambda 関数",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rimraf dist",
+    "prebuild": "npm run clean",
+    "deploy": "npm run build && sam deploy --guided",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.971.0",
+    "@aws-sdk/client-s3": "^3.971.0",
+    "@aws-sdk/client-s3vectors": "^3.971.0",
+    "@aws-sdk/util-dynamodb": "^3.971.0"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^20",
+    "typescript": "^5",
+    "rimraf": "^6.0.0"
+  }
+}
