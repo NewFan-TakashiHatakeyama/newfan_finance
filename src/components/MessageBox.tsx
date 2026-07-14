@@ -21,6 +21,7 @@ import { useSpeech } from 'react-text-to-speech';
 import ThinkBox from './ThinkBox';
 import { useChat, Section } from '@/lib/hooks/useChat';
 import Citation from './Citation';
+import RagAds from './RagAds';
 
 const ThinkTagProcessor = ({
   children,
@@ -152,6 +153,11 @@ const MessageBox = ({
                       </button>
                     </div>
                   </div>
+                )}
+
+                {/* 改修5: RAG広告ブロック（Related直上）。最終セクションは確定後のみ表示 */}
+                {section.assistantMessage && (!isLast || !loading) && (
+                  <RagAds pageId={section.assistantMessage.messageId} />
                 )}
 
                 {isLast &&
