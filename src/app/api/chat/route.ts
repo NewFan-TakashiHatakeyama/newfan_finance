@@ -17,6 +17,8 @@ import {
   getCustomOpenaiModelName,
 } from '@/lib/config';
 import { searchHandlers } from '@/lib/search';
+import { finalizeAds } from '@/lib/ads/finalizeAds';
+import { adsActiveFor } from '@/lib/ads/rollout';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -101,8 +103,11 @@ const handleEmitterEvents = async (
   writer: WritableStreamDefaultWriter,
   encoder: TextEncoder,
   chatId: string,
+  question: string,
+  adsActive: boolean,
 ) => {
   let recievedMessage = '';
+  let adsFinalized = false;
   const aiMessageId = crypto.randomBytes(7).toString('hex');
 
   stream.on('data', (data) => {
@@ -141,6 +146,24 @@ const handleEmitterEvents = async (
           createdAt: new Date().toString(),
         })
         .execute();
+
+      // 改修4: 回答確定（sources受信）時に広告生成を起動（配信の起点・fire-and-forget・冪等）。
+      // pageId は RagAds/クリックURL と同一の aiMessageId。表示計測はここでは発生しない。
+      // 改修5: ロールアウトゲート（adsActive）を通過したコホートのみ生成＝段階公開の対象制御。
+      //   ゲート外は Placement 未作成 → page-ads 空 → RagAds は collapse（表示側の追加ゲート不要）。
+      if (adsActive && !adsFinalized) {
+        adsFinalized = true; // sources が複数回来ても1回だけ（広告側も冪等）
+        const srcs = (Array.isArray(parsedData.data) ? parsedData.data : []) as Array<{
+          metadata?: { article_id?: string };
+        }>;
+        void finalizeAds({
+          pageId: aiMessageId,
+          question,
+          articleContentIds: srcs
+            .map((s) => s.metadata?.article_id)
+            .filter((x): x is string => !!x),
+        });
+      }
     }
   });
   stream.on('end', () => {
@@ -355,7 +378,16 @@ export const POST = async (req: Request) => {
     const writer = responseStream.writable.getWriter();
     const encoder = new TextEncoder();
 
-    handleEmitterEvents(stream, writer, encoder, message.chatId);
+    // 改修5: ロールアウトゲート。安定 key（sessionId優先・無ければchatId）でコホート判定。
+    const adsActive = adsActiveFor(sessionId || message.chatId);
+    handleEmitterEvents(
+      stream,
+      writer,
+      encoder,
+      message.chatId,
+      message.content,
+      adsActive,
+    );
     handleHistorySave(message, humanMessageId, body.focusMode, body.files, sessionId);
 
     return new Response(responseStream.readable, {
