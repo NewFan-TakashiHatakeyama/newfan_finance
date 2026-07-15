@@ -24,9 +24,9 @@ const LOG_PREFIX = 'prna/vectors-log';
 export interface IngestionStatus {
   /** DynamoDB url_hash (PK) */
   urlHash: string;
-  /** S3 Vectors に書き込んだキー (= url_hash) */
+  /** S3 Vectors に書き込んだ / 削除したキー (= url_hash) */
   vectorKey?: string;
-  /** DynamoDB Stream イベント名 (INSERT / MODIFY) */
+  /** DynamoDB Stream イベント名 (INSERT / MODIFY / REMOVE) */
   eventName?: string;
   status: 'success' | 'error' | 'skipped';
   reason?: string;

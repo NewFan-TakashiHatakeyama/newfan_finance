@@ -3,6 +3,7 @@ Transform: AWS::Serverless-2016-10-31
 Description: >
   prna-vectors-ingestor
   DynamoDB Streams から記事を受信し、Embedding 化して S3 Vectors に格納する Lambda 関数。
+  REMOVE (TTL 失効・手動削除) では対応するベクトルを削除し、索引と記事テーブルを同期する。
   S3 バケットには重複記事が存在するため、DynamoDB (重複排除済み) を起点とする。
 
 Parameters:
@@ -29,7 +30,7 @@ Resources:
       FunctionName: prna-vectors-ingestor
       Handler: dist/index.handler
       CodeUri: .
-      Description: DynamoDB Streams → Embedding → S3 Vectors 投入
+      Description: DynamoDB Streams → Embedding → S3 Vectors 投入 / REMOVE 連動でベクトル削除
       Role: arn:aws:iam::654654601240:role/prna-vectors-ingestor-role
       Environment:
         Variables:
@@ -49,9 +50,10 @@ Resources:
             MaximumBatchingWindowInSeconds: 30
             MaximumRetryAttempts: 3
             BisectBatchOnFunctionError: true
+            # REMOVE を含めないと TTL 削除がハンドラへ届かず、索引に幽霊ベクトルが残る
             FilterCriteria:
               Filters:
-                - Pattern: '{"eventName":["INSERT","MODIFY"]}'
+                - Pattern: '{"eventName":["INSERT","MODIFY","REMOVE"]}'
 
   # CloudWatch アラーム: Lambda エラー監視
   IngestorErrorAlarm:
