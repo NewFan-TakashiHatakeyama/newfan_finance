@@ -32,7 +32,7 @@ export interface DynamoDBArticleRecord {
   s3Key: string;           // 元の S3 オブジェクトキー
   createdAt: string;       // 作成日時 (ISO 8601)
   updatedAt: string;       // 更新日時 (ISO 8601)
-  ttl: number;             // TTL (epoch seconds)
+  ttl?: number;            // TTL (epoch seconds) — 廃止済み。過去に取り込んだ記事にのみ残存する
 }
 
 /**

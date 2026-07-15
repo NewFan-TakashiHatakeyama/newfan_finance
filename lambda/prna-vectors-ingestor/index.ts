@@ -6,7 +6,7 @@
  *
  * トリガー: DynamoDB Streams (prna-articles テーブル)
  *
- * フロー:
+ * フロー (INSERT/MODIFY = 追加・更新):
  *   1. DynamoDB Streams から INSERT/MODIFY イベントを受信
  *   2. NewImage から記事データを取得 (unmarshall)
  *   3. テキスト前処理 (HTML 除去、正規化)
@@ -14,9 +14,16 @@
  *   5. S3 Vectors (newfan-finance-vectors/prna-articles) に PutVectors
  *   6. 取り込みログを S3 に書き込み
  *
+ * フロー (REMOVE = TTL 失効・手動削除):
+ *   1. Keys.url_hash を取得 (REMOVE では NewImage が存在しない)
+ *   2. S3 Vectors から DeleteVectors で同一キーのベクトルを削除
+ *
  * ※ S3 バケットにはカテゴリを跨いだ重複記事が存在するため、
  *   DynamoDB (url_hash で重複排除済み) を起点とすることで
  *   同一記事の二重 Embedding を防止する。
+ *
+ * ※ DynamoDB の TTL は S3 Vectors には作用しないため、REMOVE に連動して
+ *   ベクトルを削除しないと索引に幽霊エントリが蓄積し retrieval が劣化する。
  */
 
 import { DynamoDBStreamEvent, DynamoDBRecord } from 'aws-lambda';
@@ -27,7 +34,7 @@ import {
   processArticleForVectors,
 } from './text-processor';
 import { generateEmbedding } from './embedding-client';
-import { putVector } from './s3-vectors-client';
+import { putVector, deleteVectors } from './s3-vectors-client';
 import { logIngestion, IngestionStatus } from './ingestion-logger';
 
 export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
@@ -57,8 +64,8 @@ export const handler = async (event: DynamoDBStreamEvent): Promise<void> => {
 /**
  * 個別の DynamoDB Stream レコードを処理
  *
- * INSERT (新規記事) と MODIFY (更新) のみ処理し、
- * REMOVE (削除/TTL 失効) はスキップする。
+ * INSERT (新規記事) / MODIFY (更新) はベクトルを投入し、
+ * REMOVE (TTL 失効・手動削除) はベクトルを削除する。
  * エラーは個別にキャッチし、バッチ全体を失敗させない。
  */
 async function processRecord(
@@ -69,7 +76,53 @@ async function processRecord(
     record.dynamodb?.Keys?.url_hash?.S || 'unknown';
   const startTime = Date.now();
 
-  // INSERT / MODIFY のみ処理 (REMOVE はスキップ)
+  // REMOVE: 記事削除に連動してベクトルを削除 (索引の幽霊エントリ防止)
+  // StreamViewType=NEW_IMAGE のため NewImage/OldImage は無いが、Keys は必ず含まれる
+  if (eventName === 'REMOVE') {
+    if (urlHash === 'unknown') {
+      return {
+        urlHash,
+        eventName,
+        status: 'skipped',
+        reason: 'No url_hash key in REMOVE record',
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
+      };
+    }
+
+    try {
+      await deleteVectors([urlHash]);
+
+      console.log(
+        `[Ingestor] OK [REMOVE]: vector deleted ${urlHash} (${Date.now() - startTime}ms)`
+      );
+
+      return {
+        urlHash,
+        vectorKey: urlHash,
+        eventName,
+        status: 'success',
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
+      };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[Ingestor] Error deleting vector ${urlHash} [REMOVE]:`,
+        message
+      );
+      return {
+        urlHash,
+        eventName,
+        status: 'error',
+        reason: message,
+        timestamp: new Date().toISOString(),
+        durationMs: Date.now() - startTime,
+      };
+    }
+  }
+
+  // INSERT / MODIFY 以外は対象外
   if (eventName !== 'INSERT' && eventName !== 'MODIFY') {
     return {
       urlHash,

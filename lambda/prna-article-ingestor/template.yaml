@@ -63,9 +63,12 @@ Resources:
               KeyType: RANGE
           Projection:
             ProjectionType: ALL
+      # TTL は廃止 (以前は ttl 属性で30日後に自動削除していた)。
+      # 30日で消す設計が RAG の網羅性=回答品質の上限を決めてしまっていたため。
+      # raw は S3 (prna/items/) に永続保管、保持容量も小さいため全期間を保持する。
       TimeToLiveSpecification:
         AttributeName: ttl
-        Enabled: true
+        Enabled: false
       Tags:
         - Key: Project
           Value: newfan-finance

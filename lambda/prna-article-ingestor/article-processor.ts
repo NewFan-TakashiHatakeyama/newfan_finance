@@ -17,7 +17,6 @@ export interface ProcessedArticle {
   s3Key: string;
   createdAt: string;
   updatedAt: string;
-  ttl: number;
 }
 
 /**
@@ -34,6 +33,26 @@ export interface ArticleItem {
   summary: string;
   content_html: string | null;
   authors: string[];
+}
+
+/**
+ * DynamoDB の 1 項目あたり上限は 400KB。他属性 (url/title/thumbnail 等) で約 1KB 使うため、
+ * content は安全マージンを取って 380KB (UTF-8 バイト) までに制限する。
+ *
+ * ※ 超過記事はごく少数 (実測 0.04%) だが、制限しないと PutItem が
+ *   ValidationException となり記事ごと取り込めない (従来は握り潰されて静かに欠落していた)。
+ *   RAG は content の先頭 8,000 字しか Embedding に使わないため、切り詰めても検索品質に影響しない。
+ */
+const MAX_CONTENT_BYTES = 380 * 1024;
+
+/**
+ * UTF-8 バイト数で文字列を切り詰める (マルチバイト文字の途中で切らない)
+ */
+function truncateToBytes(text: string, maxBytes: number): string {
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.length <= maxBytes) return text;
+  // 末尾がマルチバイト文字の途中だと不正な置換文字になるため除去する
+  return buf.subarray(0, maxBytes).toString('utf8').replace(/�+$/, '');
 }
 
 /**
@@ -111,8 +130,11 @@ export function processArticle(
   const pubDate = item.published_iso || item.published || now;
   const pubDateEpoch = Math.floor(new Date(pubDate).getTime() / 1000);
 
-  // TTL: 30 日後に自動削除
-  const ttl = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+  // TTL は設定しない (廃止)。
+  // 以前は「取り込み時刻 + 30日」で自動削除していたが、RAG の回答品質は記事の網羅性に
+  // 依存するため、30日で消す設計が品質の上限を決めてしまっていた。
+  // 記事の raw は S3 (prna/items/) に永続保管されており、DynamoDB 側の保持容量も小さいため、
+  // テーブルの TTL 設定ごと無効化している (S3 Vectors 索引との不整合も構造的に起きにくくなる)。
 
   const decodedTitle = decodeHtmlEntities(item.title);
 
@@ -121,7 +143,7 @@ export function processArticle(
     title_hash: generateTitleHash(decodedTitle),
     url: item.link,
     title: decodedTitle,
-    content: item.summary || item.content_html || '',
+    content: truncateToBytes(item.summary || item.content_html || '', MAX_CONTENT_BYTES),
     thumbnail: extractThumbnail(item.summary || ''),
     pubDate,
     pubDateEpoch,
@@ -130,6 +152,5 @@ export function processArticle(
     s3Key,
     createdAt: now,
     updatedAt: now,
-    ttl,
   };
 }
