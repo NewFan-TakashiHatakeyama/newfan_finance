@@ -64,7 +64,6 @@ interface ProcessedArticle {
   s3Key: string;
   createdAt: string;
   updatedAt: string;
-  ttl: number;
 }
 
 // ===== Helper Functions =====
@@ -110,7 +109,7 @@ function processArticle(item: ArticleItem, s3Key: string): ProcessedArticle {
   const now = new Date().toISOString();
   const pubDate = item.published_iso || item.published || now;
   const pubDateEpoch = Math.floor(new Date(pubDate).getTime() / 1000);
-  const ttl = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+  // TTL は設定しない (廃止・article-processor.ts と同じ方針)
   const decodedTitle = decodeHtmlEntities(item.title);
 
   return {
@@ -127,7 +126,6 @@ function processArticle(item: ArticleItem, s3Key: string): ProcessedArticle {
     s3Key,
     createdAt: now,
     updatedAt: now,
-    ttl,
   };
 }
 

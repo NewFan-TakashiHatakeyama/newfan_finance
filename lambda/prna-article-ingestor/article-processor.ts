@@ -17,7 +17,6 @@ export interface ProcessedArticle {
   s3Key: string;
   createdAt: string;
   updatedAt: string;
-  ttl: number;
 }
 
 /**
@@ -111,8 +110,11 @@ export function processArticle(
   const pubDate = item.published_iso || item.published || now;
   const pubDateEpoch = Math.floor(new Date(pubDate).getTime() / 1000);
 
-  // TTL: 30 日後に自動削除
-  const ttl = Math.floor(Date.now() / 1000) + 30 * 24 * 60 * 60;
+  // TTL は設定しない (廃止)。
+  // 以前は「取り込み時刻 + 30日」で自動削除していたが、RAG の回答品質は記事の網羅性に
+  // 依存するため、30日で消す設計が品質の上限を決めてしまっていた。
+  // 記事の raw は S3 (prna/items/) に永続保管されており、DynamoDB 側の保持容量も小さいため、
+  // テーブルの TTL 設定ごと無効化している (S3 Vectors 索引との不整合も構造的に起きにくくなる)。
 
   const decodedTitle = decodeHtmlEntities(item.title);
 
@@ -130,6 +132,5 @@ export function processArticle(
     s3Key,
     createdAt: now,
     updatedAt: now,
-    ttl,
   };
 }
