@@ -68,6 +68,19 @@ interface ProcessedArticle {
 
 // ===== Helper Functions =====
 
+/**
+ * DynamoDB の 1 項目あたり上限 400KB に対する content の上限 (UTF-8 バイト)。
+ * lambda/prna-article-ingestor/article-processor.ts と同じ方針。
+ */
+const MAX_CONTENT_BYTES = 380 * 1024;
+
+/** UTF-8 バイト数で文字列を切り詰める (マルチバイト文字の途中で切らない) */
+function truncateToBytes(text: string, maxBytes: number): string {
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.length <= maxBytes) return text;
+  return buf.subarray(0, maxBytes).toString('utf8').replace(/�+$/, '');
+}
+
 function generateUrlHash(url: string): string {
   const normalized = url.trim().replace(/\/$/, '').split('?')[0];
   return createHash('sha256').update(normalized).digest('hex');
@@ -117,7 +130,7 @@ function processArticle(item: ArticleItem, s3Key: string): ProcessedArticle {
     title_hash: generateTitleHash(decodedTitle),
     url: item.link,
     title: decodedTitle,
-    content: item.summary || item.content_html || '',
+    content: truncateToBytes(item.summary || item.content_html || '', MAX_CONTENT_BYTES),
     thumbnail: extractThumbnail(item.summary || ''),
     pubDate,
     pubDateEpoch,
@@ -156,6 +169,7 @@ async function backfill(): Promise<void> {
   let totalErrors = 0;
   let totalSkipped = 0;
   let totalDuplicates = 0;
+  let totalWriteFailed = 0;
 
   do {
     const listResponse = await s3.send(
@@ -220,7 +234,7 @@ async function backfill(): Promise<void> {
         batch.push(processed);
 
         if (batch.length >= BATCH_SIZE) {
-          await writeBatch(dynamo, batch.splice(0, BATCH_SIZE));
+          totalWriteFailed += await writeBatch(dynamo, batch.splice(0, BATCH_SIZE));
           totalProcessed += BATCH_SIZE;
           process.stdout.write(
             `\rProcessed: ${totalProcessed} | Duplicates skipped: ${totalDuplicates}`,
@@ -234,7 +248,7 @@ async function backfill(): Promise<void> {
 
     // 残りのバッチを書き込み
     if (batch.length > 0) {
-      await writeBatch(dynamo, batch);
+      totalWriteFailed += await writeBatch(dynamo, batch);
       totalProcessed += batch.length;
       process.stdout.write(
         `\rProcessed: ${totalProcessed} | Duplicates skipped: ${totalDuplicates}`,
@@ -251,6 +265,7 @@ async function backfill(): Promise<void> {
   console.log(`Total processed (unique): ${totalProcessed}`);
   console.log(`Total duplicates skipped: ${totalDuplicates}`);
   console.log(`Total errors:             ${totalErrors}`);
+  console.log(`Total write failed:       ${totalWriteFailed}`);
   console.log(`Total skipped (empty):    ${totalSkipped}`);
   console.log(`Unique title hashes:      ${seenTitleHashes.size}`);
   console.log(`Unique URL hashes:        ${seenUrlHashes.size}`);
@@ -259,11 +274,13 @@ async function backfill(): Promise<void> {
 
 /**
  * DynamoDB にバッチ書き込み
+ *
+ * @returns 書き込みに失敗した件数 (バッチ単位で失敗した場合はそのバッチの件数)
  */
 async function writeBatch(
   dynamo: DynamoDBDocumentClient,
   items: ProcessedArticle[],
-): Promise<void> {
+): Promise<number> {
   // バッチ内での url_hash 重複排除 (DynamoDB BatchWriteItem はキー重複を許さない)
   const uniqueItems = new Map<string, ProcessedArticle>();
   for (const item of items) {
@@ -273,7 +290,7 @@ async function writeBatch(
   }
 
   const deduped = Array.from(uniqueItems.values());
-  if (deduped.length === 0) return;
+  if (deduped.length === 0) return 0;
 
   const command = new BatchWriteCommand({
     RequestItems: {
@@ -299,9 +316,15 @@ async function writeBatch(
       });
       await dynamo.send(retryCommand);
     }
+    return 0;
   } catch (error) {
-    console.error('\nBatch write error:', error);
-    throw error;
+    // バッチ単位で握り潰して継続する。1件の異常データで全体 (4万件規模) の
+    // 取り込みが停止すると、再実行コスト (再 Embedding) が大きいため。
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `\nBatch write error (${deduped.length} items skipped): ${message}`,
+    );
+    return deduped.length;
   }
 }
 

@@ -36,6 +36,26 @@ export interface ArticleItem {
 }
 
 /**
+ * DynamoDB の 1 項目あたり上限は 400KB。他属性 (url/title/thumbnail 等) で約 1KB 使うため、
+ * content は安全マージンを取って 380KB (UTF-8 バイト) までに制限する。
+ *
+ * ※ 超過記事はごく少数 (実測 0.04%) だが、制限しないと PutItem が
+ *   ValidationException となり記事ごと取り込めない (従来は握り潰されて静かに欠落していた)。
+ *   RAG は content の先頭 8,000 字しか Embedding に使わないため、切り詰めても検索品質に影響しない。
+ */
+const MAX_CONTENT_BYTES = 380 * 1024;
+
+/**
+ * UTF-8 バイト数で文字列を切り詰める (マルチバイト文字の途中で切らない)
+ */
+function truncateToBytes(text: string, maxBytes: number): string {
+  const buf = Buffer.from(text, 'utf8');
+  if (buf.length <= maxBytes) return text;
+  // 末尾がマルチバイト文字の途中だと不正な置換文字になるため除去する
+  return buf.subarray(0, maxBytes).toString('utf8').replace(/�+$/, '');
+}
+
+/**
  * 記事 URL から SHA-256 ハッシュを生成 (URL ベースの重複排除用)
  */
 export function generateUrlHash(url: string): string {
@@ -123,7 +143,7 @@ export function processArticle(
     title_hash: generateTitleHash(decodedTitle),
     url: item.link,
     title: decodedTitle,
-    content: item.summary || item.content_html || '',
+    content: truncateToBytes(item.summary || item.content_html || '', MAX_CONTENT_BYTES),
     thumbnail: extractThumbnail(item.summary || ''),
     pubDate,
     pubDateEpoch,
